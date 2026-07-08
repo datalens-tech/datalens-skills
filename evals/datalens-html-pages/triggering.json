@@ -1,0 +1,82 @@
+[
+  {
+    "query": "i need to generate a standalone html sales report — quarterly revenue by region, a summary table and a couple of bar charts, and a button to download the underlying data as csv. can you write the html?",
+    "should_trigger": true
+  },
+  {
+    "query": "my datalens html report renders but the charts are empty. console says 'Refused to connect to /api/metrics because it violates the Content-Security-Policy directive connect-src none'. my script does fetch('/api/metrics') on load. how do i get the data into the page?",
+    "should_trigger": true
+  },
+  {
+    "query": "uploaded an html dashboard to datalens and the console is throwing CSP violations for https://cdn.plot.ly/plotly-2.35.0.min.js — the whole chart is blank. how do i load plotly so datalens doesn't block it?",
+    "should_trigger": true
+  },
+  {
+    "query": "the report page i built for datalens keeps throwing 'Uncaught SecurityError: Failed to read the localStorage property' — i was storing the selected date range there so it persists across reloads. what am i supposed to do instead in this environment?",
+    "should_trigger": true
+  },
+  {
+    "query": "the Export button in my datalens html report just does nothing — no error in the console. it's an <a download='data.csv'> with a blob url. how do i actually let the user download the csv from inside datalens?",
+    "should_trigger": true
+  },
+  {
+    "query": "how do i make an html page i'm generating for datalens pick up the user's current theme (light/dark) and language (ru/en) that they have selected in the datalens ui?",
+    "should_trigger": true
+  },
+  {
+    "query": "datalens won't accept my html report upload — it complains it's too large and something about encoding. the file is about 13 MB, i inlined a few big screenshots as base64 and there's some cyrillic text in it. what are the actual limits i need to hit?",
+    "should_trigger": true
+  },
+  {
+    "query": "we're using an llm to spit out self-contained html reports that get shown inside our datalens instance in a sandboxed iframe. what rules does the generated html need to follow so it actually renders and isn't blocked or stripped?",
+    "should_trigger": true
+  },
+  {
+    "query": "google fonts aren't loading in my embedded datalens report — the woff2 files from fonts.gstatic.com get blocked but the rest of the page is fine. how do i include a custom font properly here?",
+    "should_trigger": true
+  },
+  {
+    "query": "images are broken in my datalens html report — some come from our own cdn (assets.acme.io) and one is an http:// url. everything else on the page works. why won't the images show and which hosts am i allowed to use?",
+    "should_trigger": true
+  },
+  {
+    "query": "in datalens i want a table column where negative values show up bold and red with a little down-arrow, and positive ones green with an up-arrow. how do i write that calculated field using markup functions?",
+    "should_trigger": false
+  },
+  {
+    "query": "i'm hardening the Content-Security-Policy on our nginx for our react SPA — script-src with a nonce isn't allowing my inline bootstrap script and i keep getting violations. how should i configure the header?",
+    "should_trigger": false
+  },
+  {
+    "query": "how do i connect datalens to our clickhouse cluster and build a dataset with a calculated field for revenue-per-active-user, plus a date hierarchy for drilldowns?",
+    "should_trigger": false
+  },
+  {
+    "query": "i want to embed one of our existing datalens dashboards into our internal confluence page behind auth, using a signed iframe url so only logged-in employees can see it. how do i set up the secure embedding?",
+    "should_trigger": false
+  },
+  {
+    "query": "generate a standalone, offline html sales report i can email to the sales team — self-contained single file, a bar chart, a summary table, and dark mode. it just needs to open in a browser, no external servers.",
+    "should_trigger": false
+  },
+  {
+    "query": "in the datalens editor i'm coding a custom chart in javascript and ChartEditor.generateHtml keeps throwing 'Tag button is not allowed'. which html tags and attributes are actually permitted there?",
+    "should_trigger": false
+  },
+  {
+    "query": "i've got an html report and i need to turn it into a polished pdf with a cover page, page numbers, and a table of contents for printing. what's the best way to do the conversion?",
+    "should_trigger": false
+  },
+  {
+    "query": "what's the base url and auth setup for the datalens api? i want to script bulk-uploading charts and dashboards from python using the sdk.",
+    "should_trigger": false
+  },
+  {
+    "query": "we embed a third-party widget via iframe and its tailwind utility classes are bleeding into our host page's styles. how do we sandbox or scope the css so it doesn't leak?",
+    "should_trigger": false
+  },
+  {
+    "query": "i'm building a code playground where users run their own untrusted html/js inside a sandboxed iframe. what sandbox attributes and CSP directives should i use so it can't touch cookies or the network?",
+    "should_trigger": false
+  }
+]

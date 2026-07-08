@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sales</title>
+  <!-- BROKEN for DataLens on purpose — the "before" for eval #2 (fix-blocked-report). -->
+  <!-- cdn.plot.ly is off the CSP allowlist, so this script is blocked. -->
+  <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+</head>
+<body>
+  <div id="chart" style="width:100%;height:320px"></div>
+  <!-- <a download> is blocked in the sandbox. -->
+  <a id="dl" download="sales.csv" href="#">Download CSV</a>
+
+  <script>
+    // network is blocked (connect-src 'none') and storage throws in the sandbox:
+    const cached = localStorage.getItem('sales');
+    fetch('/api/sales')
+      .then((r) => r.json())
+      .then((rows) => {
+        localStorage.setItem('sales', JSON.stringify(rows));
+        Plotly.newPlot('chart', [{
+          x: rows.map((r) => r.region),
+          y: rows.map((r) => r.total),
+          type: 'bar',
+        }]);
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DataLens report</title>
+
+  <!-- Optional web font (allowlisted): CSS from googleapis, files from gstatic. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+
+  <style>
+    :root {
+      --bg:#ffffff; --panel:#f7f8fa; --fg:#1b1f24; --muted:#69707a;
+      --border:#e7e9ee; --accent:#2f9e6f;
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      --bg:#0f1216; --panel:#161b22; --fg:#e6e8eb; --muted:#98a1ad;
+      --border:#242b34; --accent:#43b581;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin:0; background:var(--bg); color:var(--fg); line-height:1.5;
+      font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing:antialiased;
+    }
+    .wrap { max-width:840px; margin:0 auto; padding:32px 20px; }
+    header { display:flex; align-items:center; gap:12px; margin-bottom:24px; }
+    .logo { width:32px; height:32px; flex:none; }
+    .logo rect { fill:var(--accent); }
+    h1 { font-size:20px; font-weight:600; margin:0; }
+    .sub { color:var(--muted); font-size:13px; margin:2px 0 0; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:24px; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; }
+    .card .k { color:var(--muted); font-size:12px; font-weight:500; text-transform:uppercase; letter-spacing:.04em; }
+    .card .v { font-size:24px; font-weight:600; margin-top:6px; font-variant-numeric:tabular-nums; }
+    .bars { display:flex; flex-direction:column; gap:10px; }
+    .bar { display:grid; grid-template-columns:76px 1fr 56px; align-items:center; gap:12px; font-size:14px; }
+    .track { background:var(--panel); border:1px solid var(--border); border-radius:999px; height:10px; overflow:hidden; }
+    .fill { display:block; height:100%; background:var(--accent); border-radius:999px; }
+    .n { color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; }
+    footer { margin-top:28px; display:flex; justify-content:flex-end; }
+    button {
+      font:inherit; color:#fff; background:var(--accent); border:0;
+      border-radius:8px; padding:8px 14px; cursor:pointer;
+    }
+    button:hover { filter:brightness(1.05); }
+    @media (max-width:480px) {
+      .wrap { padding:20px 14px; }
+      .bar { grid-template-columns:60px 1fr 48px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3"  y="11" width="4" height="10" rx="1"></rect>
+        <rect x="10" y="5"  width="4" height="16" rx="1"></rect>
+        <rect x="17" y="8"  width="4" height="13" rx="1"></rect>
+      </svg>
+      <div>
+        <h1 id="title">Quarterly report</h1>
+        <p class="sub" id="subtitle">Generated in DataLens</p>
+      </div>
+    </header>
+
+    <section class="grid" id="stats"></section>
+    <section class="bars" id="bars"></section>
+
+    <footer>
+      <button id="export" type="button">Export CSV</button>
+    </footer>
+  </div>
+
+  <script>
+    // Data is INLINED at generation time — the sandbox has no network.
+    const DATA = [
+      { label: 'Jan', value: 120 },
+      { label: 'Feb', value: 145 },
+      { label: 'Mar', value: 132 },
+      { label: 'Apr', value: 178 },
+    ];
+
+    const params = new URLSearchParams(location.search);
+
+    // Language: swap copy for the host's lang param.
+    const lang = params.get('lang') === 'ru' ? 'ru' : 'en';
+    const T = {
+      en: { title: 'Quarterly report', sub: 'Generated in DataLens', total: 'Total', peak: 'Peak', avg: 'Average' },
+      ru: { title: 'Квартальный отчёт', sub: 'Сгенерировано в DataLens', total: 'Итого', peak: 'Пик', avg: 'Среднее' },
+    }[lang];
+    document.documentElement.lang = lang;
+    document.getElementById('title').textContent = T.title;
+    document.getElementById('subtitle').textContent = T.sub;
+
+    // Theme: light | dark | system (resolve "system" via the OS setting, and follow changes).
+    const requested = params.get('theme') || 'system';
+    const dark = matchMedia('(prefers-color-scheme: dark)');
+    const applyTheme = (t) => {
+      document.documentElement.dataset.theme = t === 'system' ? (dark.matches ? 'dark' : 'light') : t;
+    };
+    applyTheme(requested);
+    if (requested === 'system') dark.addEventListener('change', () => applyTheme('system'));
+
+    // Render (all state in memory).
+    const sum = DATA.reduce((a, d) => a + d.value, 0);
+    const peak = Math.max(...DATA.map((d) => d.value));
+    const stats = [[T.total, sum], [T.peak, peak], [T.avg, Math.round(sum / DATA.length)]];
+    document.getElementById('stats').innerHTML = stats
+      .map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`)
+      .join('');
+    document.getElementById('bars').innerHTML = DATA
+      .map((d) => `<div class="bar"><span>${d.label}</span>`
+        + `<span class="track"><span class="fill" style="width:${Math.round((d.value / peak) * 100)}%"></span></span>`
+        + `<span class="n">${d.value}</span></div>`)
+      .join('');
+
+    // Downloads are blocked — hand the file to the host via the export protocol.
+    document.getElementById('export').addEventListener('click', () => {
+      const csv = 'label,value\n' + DATA.map((d) => d.label + ',' + d.value).join('\n');
+      parent.postMessage({ type: 'export', name: 'report.csv', mime: 'text/csv', data: csv }, '*');
+    });
+  </script>
+</body>
+</html>

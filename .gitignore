@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Agent tool local settings (per-user; the skills symlinks ARE committed)
+.claude/settings.local.json
+
+# Skill-creator scratch (trigger-eval sets, optimizer reports)
+.skill-creator/
+

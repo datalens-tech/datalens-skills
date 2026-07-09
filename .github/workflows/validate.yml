@@ -1,0 +1,33 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate skill frontmatter & naming
+        run: node scripts/validate_skills.mjs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Lint HTML pages (self-test + assets)
+        run: |
+          python skills/datalens-html-pages/scripts/validate_page.py --self-test
+          # Every shipped HTML page must pass the linter it teaches, strictly.
+          find skills/datalens-html-pages -type f -name '*.html' -print0 \
+            | xargs -0 -r -n1 python skills/datalens-html-pages/scripts/validate_page.py --strict
+
+      - name: Check the template still demonstrates every behavior (deterministic eval)
+        run: python evals/datalens-html-pages/grade_report.py --self-test

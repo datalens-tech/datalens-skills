@@ -1,0 +1,11 @@
+{
+  "name": "datalens",
+  "owner": { "name": "DataLens" },
+  "plugins": [
+    {
+      "name": "datalens-skills",
+      "source": "./",
+      "description": "Skills for working with Yandex DataLens."
+    }
+  ]
+}

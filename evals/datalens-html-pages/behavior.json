@@ -1,0 +1,77 @@
+{
+  "skill_name": "datalens-html-pages",
+  "kind": "behavior",
+  "note": "Given a prompt, does the generated page obey the DataLens sandbox+CSP rules and do what was asked? Assertions with \"auto\": true are checked mechanically by grade_report.py (their id matches a check it runs); \"auto\": false ones need human or LLM judgement. File paths are relative to this directory.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "generate-sales-report",
+      "prompt": "Build a DataLens HTML report of this quarter's sales by region: a bar chart, three KPI tiles (total / peak / average), and a button that exports the underlying rows as CSV. It should follow the user's DataLens light/dark theme.",
+      "expected_output": "One self-contained HTML document that renders in DataLens's sandboxed iframe: bar chart + KPI tiles + a working CSV export, themed from the ?theme query param, with the data inlined.",
+      "files": [],
+      "assertions": [
+        { "id": "self-contained", "auto": true, "text": "Output is one self-contained HTML document (<!DOCTYPE html>/<html> with <meta charset> in the first 1024 bytes)." },
+        { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict — no CSP/allowlist/blocked-tag/blocked-API/size/encoding violations." },
+        { "id": "no-network", "auto": true, "text": "No fetch/XHR/WebSocket — the sales data is inlined into the page, not fetched." },
+        { "id": "theme-from-query", "auto": true, "text": "Reads the theme from the query string (URLSearchParams(location.search).get('theme'))." },
+        { "id": "export-postmessage", "auto": true, "text": "CSV export uses parent.postMessage({code:'EXPORT', data:{name,mime,data}}); it does NOT use <a download> or a blob download." },
+        { "id": "renders-chart-and-kpis", "auto": false, "text": "Actually renders a bar chart of the provided data and the three KPI tiles (total/peak/average)." }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "fix-blocked-report",
+      "prompt": "This HTML report is broken inside DataLens — the chart is blank, and the console shows CSP errors loading Plotly from cdn.plot.ly plus a failed fetch('/api/sales'). Fix it so it renders in DataLens.",
+      "expected_output": "The same report, fixed: a charting library loaded from an allowlisted CDN (jsdelivr/cdnjs), the data inlined instead of fetched, no blocked storage APIs, passing the linter.",
+      "files": ["fixtures/broken-report.html"],
+      "assertions": [
+        { "id": "passes-linter", "auto": true, "text": "The fixed page passes validate_page.py --strict (which also proves the chart library is now on an allowlisted host, not cdn.plot.ly)." },
+        { "id": "no-network", "auto": true, "text": "No fetch/XHR remains — the data is inlined." },
+        { "id": "no-storage", "auto": true, "text": "No localStorage/sessionStorage/cookie/Cache API (these throw in the sandbox)." },
+        { "id": "self-contained", "auto": true, "text": "Still a single self-contained HTML document." },
+        { "id": "chart-now-renders", "auto": false, "text": "The chart renders from the inlined data." }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "bilingual-responsive-report",
+      "prompt": "Generate a DataLens HTML report of survey results — a summary table and two charts — that works in both Russian and English and reads well on a phone.",
+      "expected_output": "A self-contained page that swaps its copy on the ?lang param (ru/en), honors the ?theme param, and is responsive (viewport meta + fluid layout).",
+      "files": [],
+      "assertions": [
+        { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict." },
+        { "id": "lang-from-query", "auto": true, "text": "Reads the language from the query string (get('lang')) and switches UI copy." },
+        { "id": "theme-from-query", "auto": true, "text": "Reads the theme from the query string (get('theme'))." },
+        { "id": "responsive", "auto": true, "text": "Declares a <meta name=viewport> (responsive/mobile layout)." },
+        { "id": "i18n-coherent", "auto": false, "text": "Both the RU and EN copy are complete and correct (no missing/placeholder strings)." },
+        { "id": "mobile-readable", "auto": false, "text": "Layout is readable on a narrow (mobile) viewport." }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "filterable-table-no-storage",
+      "prompt": "Build a DataLens report with a table the user can filter by category, an export of the filtered rows as CSV, and have it remember the last filter they picked.",
+      "expected_output": "Filtering and export work; the 'remember last filter' is kept in memory for the session, because localStorage and friends are blocked in the DataLens sandbox.",
+      "files": [],
+      "assertions": [
+        { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict." },
+        { "id": "no-storage", "auto": true, "text": "Does NOT reach for localStorage/sessionStorage/indexedDB/cookies for the 'remember' feature — those throw in the sandbox." },
+        { "id": "export-postmessage", "auto": true, "text": "Export uses parent.postMessage({code:'EXPORT', data:{name,mime,data}}), not <a download>." },
+        { "id": "filtering-works", "auto": false, "text": "Selecting a category actually filters the table rows." },
+        { "id": "remember-in-memory", "auto": false, "text": "The last-filter memory is handled in-memory (session state), not via blocked storage — and the skill notes this trade-off rather than silently using storage that will throw." }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "report-with-external-link",
+      "prompt": "Generate a DataLens HTML report with a short summary and a 'View full dashboard' link to https://datalens.ru/dashboards/abc. The link must actually open when clicked inside DataLens.",
+      "expected_output": "A self-contained page whose link click is intercepted (preventDefault) and forwarded to the host via parent.postMessage({code:'OPEN_URL', data:{url}}) — an <a href> alone does not navigate in the sandbox.",
+      "files": [],
+      "assertions": [
+        { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict (the link-navigation nudge is an advisory note and does not block)." },
+        { "id": "self-contained", "auto": true, "text": "One self-contained HTML document." },
+        { "id": "opens-via-open-url", "auto": false, "text": "Clicking the link posts {code:'OPEN_URL', data:{url}} to the parent; it does not rely on <a href> / target=_blank navigation." }
+      ]
+    }
+  ]
+}

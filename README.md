@@ -16,16 +16,29 @@ HTTP API, or an MCP server.
 
 ## Install
 
-In **Claude Code**, this repo is a plugin marketplace — install and update in two commands:
+**Any agent — one command.** The community [`skills`](https://www.npmjs.com/package/skills) CLI
+installs the skill into whichever agent you use — Claude Code, Codex, OpenCode, and more —
+detecting it automatically:
+
+```bash
+npx skills add datalens-tech/datalens-skills --skill datalens-html-pages
+```
+
+Add `--agent '*'` to install into every agent you have, or `-g` for a global (all-projects) install.
+
+**Claude Code — native plugin.** If you prefer the built-in flow, this repo is also a plugin
+marketplace:
 
 ```
 /plugin marketplace add datalens-tech/datalens-skills
 /plugin install datalens-skills@datalens
 ```
 
-For **any tool**, a skill is just a folder: copy the one you want into your tool's skills directory
-(`~/.claude/skills/`, `~/.agents/skills/` for Codex, or `~/.config/opencode/skills/`). Per-tool paths, the
-`npx skills add` shortcut, and contributor setup are in **[INSTALL.md](INSTALL.md)**.
+**Manual.** A skill is just a folder — copy `skills/datalens-html-pages/` into the directory your
+agent scans: `.claude/skills/` (Claude Code), `.agents/skills/` (Codex), or `.opencode/skills/`
+(OpenCode), or the matching `~/…` path for a global install.
+
+Full per-tool paths and contributor setup are in **[INSTALL.md](INSTALL.md)**.
 
 ## Validation
 

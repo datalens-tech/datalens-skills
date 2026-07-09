@@ -42,7 +42,9 @@
     .track { background:var(--panel); border:1px solid var(--border); border-radius:999px; height:10px; overflow:hidden; }
     .fill { display:block; height:100%; background:var(--accent); border-radius:999px; }
     .n { color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; }
-    footer { margin-top:28px; display:flex; justify-content:flex-end; }
+    footer { margin-top:28px; display:flex; justify-content:flex-end; align-items:center; gap:16px; }
+    .link { color:var(--accent); text-decoration:none; font-size:14px; }
+    .link:hover { text-decoration:underline; }
     button {
       font:inherit; color:#fff; background:var(--accent); border:0;
       border-radius:8px; padding:8px 14px; cursor:pointer;
@@ -72,6 +74,7 @@
     <section class="bars" id="bars"></section>
 
     <footer>
+      <a class="link" href="https://datalens.ru/">Open in DataLens ↗</a>
       <button id="export" type="button">Export CSV</button>
     </footer>
   </div>
@@ -119,10 +122,20 @@
         + `<span class="n">${d.value}</span></div>`)
       .join('');
 
-    // Downloads are blocked — hand the file to the host via the export protocol.
+    // Downloads are blocked — hand the file to the host via the EXPORT message.
     document.getElementById('export').addEventListener('click', () => {
       const csv = 'label,value\n' + DATA.map((d) => d.label + ',' + d.value).join('\n');
-      parent.postMessage({ type: 'export', name: 'report.csv', mime: 'text/csv', data: csv }, '*');
+      parent.postMessage({ code: 'EXPORT', data: { name: 'report.csv', mime: 'text/csv', data: csv } }, '*');
+    });
+
+    // Links don't navigate in the sandbox — intercept clicks and ask the host to open the URL.
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a[href]');
+      if (!a) return;
+      const href = a.getAttribute('href');
+      if (!href || href.startsWith('#')) return; // in-page anchors scroll normally
+      e.preventDefault();
+      parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
     });
   </script>
 </body>

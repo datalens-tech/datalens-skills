@@ -137,6 +137,7 @@ class PageLinter(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.findings = []
         self.in_style = 0
+        self.has_navigable_link = False
 
     def _add(self, severity, code, message):
         line, _ = self.getpos()
@@ -153,6 +154,11 @@ class PageLinter(HTMLParser):
         if tag == "a" and "download" in attr:
             self._add("warning", "blocked-download",
                       "downloads are blocked; deliver files via the parent.postMessage export protocol")
+
+        if tag == "a":
+            href = (attr.get("href") or "").strip()
+            if href and not href.startswith("#"):
+                self.has_navigable_link = True  # needs an OPEN_URL click handler to actually open
 
         if tag == "script" and attr.get("src"):
             self._check_host("script", attr["src"], SCRIPT_HOSTS)
@@ -280,6 +286,16 @@ def lint_bytes(raw):
     linter.close()
     findings.extend(linter.findings)
     findings.extend(scan_apis(text))
+
+    # Ordinary links don't navigate in the sandbox. This is an ADVISORY 'note' (never fails
+    # --strict): a static linter can't confirm a working click handler, so all it can spot is the
+    # common mistake of links with no OPEN_URL anywhere on the page. The string is a weak proxy.
+    if linter.has_navigable_link and "OPEN_URL" not in text:
+        findings.append(Finding("note", "link-navigation", 0,
+                                "page has <a href> links but no OPEN_URL handler was detected — if "
+                                "they should navigate, intercept clicks and post "
+                                "{code:'OPEN_URL', data:{url}} to the parent (advisory; the linter "
+                                "cannot verify the handler)"))
     return findings
 
 
@@ -290,8 +306,13 @@ def lint_source(source, raw, strict):
         print(f.format(source))
     errors = sum(1 for f in findings if f.severity == "error")
     warnings = sum(1 for f in findings if f.severity == "warning")
+    notes = sum(1 for f in findings if f.severity == "note")
     if findings:
-        print(f"{source}: {errors} error(s), {warnings} warning(s)")
+        summary = f"{errors} error(s), {warnings} warning(s)"
+        if notes:
+            summary += f", {notes} note(s)"
+        print(f"{source}: {summary}")
+    # Notes are advisory and never affect the exit code.
     if errors or (strict and warnings):
         return 1
     return 0
@@ -310,7 +331,7 @@ _GOOD = b"""<!DOCTYPE html>
 <script>
   const theme = new URLSearchParams(location.search).get('theme') || 'light';
   document.getElementById('app').textContent = 'theme: ' + theme;
-  function exportCsv(data){ parent.postMessage({type:'export', name:'r.csv', mime:'text/csv', data}, '*'); }
+  function exportCsv(data){ parent.postMessage({code:'EXPORT', data:{name:'r.csv', mime:'text/csv', data}}, '*'); }
 </script>
 </body></html>
 """
@@ -331,6 +352,9 @@ _BAD_CASES = [
     (b'<!DOCTYPE html><meta charset=utf-8><script src="data:text/javascript,1"></script>', "csp-scheme", "warning"),  # data: not allowed for script-src
     (b'<!DOCTYPE html><meta charset=utf-8><img srcset="https://evil.example/a.png 1x">', "csp-host", "warning"),  # srcset is host-checked
     (b'<!DOCTYPE html><meta charset=utf-8><style>@import url("https://evil.example/x.css");</style>', "csp-css", "warning"),  # CSS refs are host-checked
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x.test/y">go</a>', "link-navigation", "note"),  # advisory note: link with no OPEN_URL handler
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="#top">top</a>', None, "clean"),  # in-page anchor is fine
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")</script>', None, "clean"),  # OPEN_URL handler present
     (b'<!DOCTYPE html><body>no encoding declared</body>', "charset", "warning"),
 ]
 
@@ -350,7 +374,7 @@ def self_test():
         codes = {f.code for f in findings}
         if kind == "clean":
             # Should not raise any CSP host/scheme/css warning.
-            bad = codes & {"csp-host", "csp-scheme", "csp-css", "csp-rewrite"}
+            bad = codes & {"csp-host", "csp-scheme", "csp-css", "csp-rewrite", "link-navigation"}
             if bad:
                 failures += 1
                 print(f"FAIL (expected no CSP warning) for {raw[:48]!r}: {sorted(bad)}")

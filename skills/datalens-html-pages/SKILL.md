@@ -69,8 +69,9 @@ jsdelivr/cdnjs.
   is `'none'`. **Inline your data into the page** instead of fetching it.
 - **Frames/objects/forms:** nested `<iframe>`, `<object>`, `<embed>`, `<form>` submission,
   `<base>`.
-- **Workers, popups, dialogs, downloads, camera/geolocation/fullscreen**, and navigating the
-  parent frame.
+- **Workers, popups, dialogs, downloads, camera/geolocation/fullscreen**, navigating the parent
+  frame, and ordinary **link navigation** — an `<a href>` won't open on its own; route clicks
+  through `OPEN_URL` (see *Opening links* below).
 
 **Theme & language** — read them from the query string:
 
@@ -87,7 +88,22 @@ verifies `event.source`, applies a MIME allowlist + size cap, sanitizes the file
 the download:
 
 ```js
-parent.postMessage({ type: 'export', name: 'report.csv', mime: 'text/csv', data: csvString }, '*');
+parent.postMessage({ code: 'EXPORT', data: { name: 'report.csv', mime: 'text/csv', data: csvString } }, '*');
+```
+
+**Opening links** — an ordinary `<a href>` does **not** navigate inside the sandbox (opaque
+origin; even `target="_blank"` only reaches `about:blank`). To open a URL, ask the host: intercept
+the click, `preventDefault()`, and post `OPEN_URL`. One delegated listener covers every link:
+
+```js
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[href]');
+  if (!a) return;
+  const href = a.getAttribute('href');
+  if (!href || href.startsWith('#')) return;   // in-page anchors scroll normally — leave them
+  e.preventDefault();
+  parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
+});
 ```
 
 **Encoding & size** (enforced at upload):
@@ -144,6 +160,7 @@ that must stay private into the page** — it is a report, not a trusted app sur
 | "localStorage is not available" / throws | storage API in sandbox | keep state in memory |
 | Fonts don't render | font host off-allowlist | Google Fonts (`fonts.googleapis.com` CSS + `fonts.gstatic.com` files) or jsdelivr/cdnjs |
 | Image is blank | `http://` or off-allowlist host | use `yastatic.net`, `data:`, or `blob:` |
-| Download button does nothing | download APIs blocked | use the `parent.postMessage({type:'export'…})` protocol |
+| Download button does nothing | download APIs blocked | post `{code:'EXPORT', data:{name,mime,data}}` to the parent |
+| Clicking a link does nothing | links don't navigate in the sandbox | intercept the click and post `{code:'OPEN_URL', data:{url}}` |
 | Page renders as plain text / broken head | wrapping markdown code fences | remove the ``` fences |
 | Upload rejected | > 10 MB or invalid UTF-8 | shrink assets; ensure UTF-8 + early `<meta charset>` |

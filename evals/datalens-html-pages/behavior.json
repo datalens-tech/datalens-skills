@@ -14,7 +14,7 @@
         { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict — no CSP/allowlist/blocked-tag/blocked-API/size/encoding violations." },
         { "id": "no-network", "auto": true, "text": "No fetch/XHR/WebSocket — the sales data is inlined into the page, not fetched." },
         { "id": "theme-from-query", "auto": true, "text": "Reads the theme from the query string (URLSearchParams(location.search).get('theme'))." },
-        { "id": "export-postmessage", "auto": true, "text": "CSV export uses parent.postMessage({type:'export',...}); it does NOT use <a download> or a blob download." },
+        { "id": "export-postmessage", "auto": true, "text": "CSV export uses parent.postMessage({code:'EXPORT', data:{name,mime,data}}); it does NOT use <a download> or a blob download." },
         { "id": "renders-chart-and-kpis", "auto": false, "text": "Actually renders a bar chart of the provided data and the three KPI tiles (total/peak/average)." }
       ]
     },
@@ -56,9 +56,21 @@
       "assertions": [
         { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict." },
         { "id": "no-storage", "auto": true, "text": "Does NOT reach for localStorage/sessionStorage/indexedDB/cookies for the 'remember' feature — those throw in the sandbox." },
-        { "id": "export-postmessage", "auto": true, "text": "Export uses parent.postMessage({type:'export',...}), not <a download>." },
+        { "id": "export-postmessage", "auto": true, "text": "Export uses parent.postMessage({code:'EXPORT', data:{name,mime,data}}), not <a download>." },
         { "id": "filtering-works", "auto": false, "text": "Selecting a category actually filters the table rows." },
         { "id": "remember-in-memory", "auto": false, "text": "The last-filter memory is handled in-memory (session state), not via blocked storage — and the skill notes this trade-off rather than silently using storage that will throw." }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "report-with-external-link",
+      "prompt": "Generate a DataLens HTML report with a short summary and a 'View full dashboard' link to https://datalens.ru/dashboards/abc. The link must actually open when clicked inside DataLens.",
+      "expected_output": "A self-contained page whose link click is intercepted (preventDefault) and forwarded to the host via parent.postMessage({code:'OPEN_URL', data:{url}}) — an <a href> alone does not navigate in the sandbox.",
+      "files": [],
+      "assertions": [
+        { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict (the link-navigation nudge is an advisory note and does not block)." },
+        { "id": "self-contained", "auto": true, "text": "One self-contained HTML document." },
+        { "id": "opens-via-open-url", "auto": false, "text": "Clicking the link posts {code:'OPEN_URL', data:{url}} to the parent; it does not rely on <a href> / target=_blank navigation." }
       ]
     }
   ]

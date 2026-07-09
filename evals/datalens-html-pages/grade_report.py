@@ -45,6 +45,8 @@ def grade(path: Path) -> dict[str, tuple[bool, str]]:
 
     findings = validate_page.lint_bytes(raw)
     codes = {f.code for f in findings}
+    # `--strict` fails on errors and warnings; advisory 'note' findings never block.
+    blocking = [f for f in findings if f.severity in ("error", "warning")]
 
     checks: dict[str, tuple[bool, str]] = {}
     checks["self-contained"] = (
@@ -52,9 +54,9 @@ def grade(path: Path) -> dict[str, tuple[bool, str]]:
         "HTML document with a <meta charset> in the first bytes",
     )
     checks["passes-linter"] = (
-        not findings,
-        "validate_page.py --strict is clean" if not findings
-        else f"{len(findings)} linter finding(s): " + ", ".join(sorted(codes)),
+        not blocking,
+        "validate_page.py --strict is clean" if not blocking
+        else f"{len(blocking)} linter finding(s): " + ", ".join(sorted(f.code for f in blocking)),
     )
     checks["no-network"] = (
         "blocked-network" not in codes,

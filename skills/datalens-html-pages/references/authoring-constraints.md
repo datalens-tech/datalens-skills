@@ -32,8 +32,8 @@ Rewrite off-allowlist libraries through an allowed mirror:
 | Network | `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `navigator.sendBeacon` | **inline the data** into the page |
 | Workers | `new Worker`, `SharedWorker`, `navigator.serviceWorker` | do work on the main thread |
 | Popups/dialogs | `window.open`, `alert`, `confirm`, `prompt` | render UI in the page |
-| Navigation | navigating the parent (`parent.location`, `top.location`) | — (allowed: `parent.postMessage`) |
-| Downloads | `<a download>`, programmatic blob downloads | the postMessage export protocol (below) |
+| Navigation / links | navigating the parent (`parent.location`, `top.location`); ordinary `<a href>` link navigation | post `{code:'OPEN_URL', data:{url}}` on click (below) |
+| Downloads | `<a download>`, programmatic blob downloads | post `{code:'EXPORT', data:{…}}` (below) |
 | Capabilities | `getUserMedia` (camera/mic), `navigator.geolocation`, `requestFullscreen` | — |
 
 ## Blocked tags
@@ -51,16 +51,30 @@ const theme = params.get('theme'); // 'light' | 'dark' | 'system'
 const lang  = params.get('lang');  // 'ru' | 'en'
 ```
 
-## Files out — the export protocol
+## Files & links out — the parent-message protocol
 
-Download APIs are blocked. Post the file to the host, which validates the source frame, enforces a
-MIME allowlist and size cap, sanitizes the filename, and creates the download:
+`parent.postMessage` is the only channel to the host; the host dispatches on the message `code`.
+
+**Export a file** (download APIs are blocked). The host validates the source frame, enforces a MIME
+allowlist and size cap, sanitizes the filename, and creates the download:
 
 ```js
 function exportFile(name, mime, data) {
-  parent.postMessage({ type: 'export', name, mime, data }, '*');
+  parent.postMessage({ code: 'EXPORT', data: { name, mime, data } }, '*');
 }
 exportFile('report.csv', 'text/csv', csvString);
+```
+
+**Open a link** (ordinary navigation is blocked — an `<a href>` does nothing, and `target="_blank"`
+only reaches `about:blank`). Attach one delegated listener that turns link clicks into `OPEN_URL`:
+
+```js
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[href]');
+  if (!a || a.getAttribute('href').startsWith('#')) return; // leave in-page anchors alone
+  e.preventDefault();
+  parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
+});
 ```
 
 ## Encoding & size (upload-time)
@@ -79,6 +93,8 @@ exportFile('report.csv', 'text/csv', csvString);
 - external `src`/`href` host outside the CSP allowlist (with jsdelivr/cdnjs rewrite hints)
 - storage / network / worker / popup / dialog / capability API usage
 - blocked tags and `<a download>`
+- (advisory note) `<a href>` links with no `OPEN_URL` handler detected — they won't navigate
+- CSS `url()` / `@import` and `srcset` hosts off the allowlist
 - missing early `<meta charset>`; high `U+FFFD` density
 - wrapping markdown code fences
 - size over the soft (5 MB) / hard (10 MB) limits

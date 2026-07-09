@@ -76,14 +76,26 @@ Notes / rationale:
   presigned PUTs**, because CSP injection and metadata must stay server-controlled. Per-method
   body limit ≈ 10 MB, with early `Content-Length` rejection at the edge.
 
-## Export protocol
+## Parent-message protocol
 
-Downloads are blocked in the sandbox. To deliver a file, the page posts to the host:
+`parent.postMessage` is the **only** sanctioned channel to the host (it is not blocked by the
+linter). The host verifies `event.source === iframe.contentWindow` and dispatches on the message
+`code`.
+
+**Export a file** — downloads are blocked in the sandbox, so hand the bytes to the host, which
+applies a MIME allowlist and a size cap, sanitizes the filename, and generates the download:
 
 ```js
-parent.postMessage({ type: 'export', name, mime, data }, '*');
+parent.postMessage({ code: 'EXPORT', data: { name, mime, data } }, '*');
 ```
 
-The host verifies `event.source === iframe.contentWindow`, applies a MIME allowlist and a size
-cap, sanitizes the filename, and generates the download link. `parent.postMessage` is the **only**
-sanctioned parent channel — it is not blocked by the linter.
+**Open a URL** — ordinary links do **not** navigate inside the opaque-origin sandbox (an `<a href>`
+does nothing, and `target="_blank"` only reaches `about:blank`). Intercept the click,
+`preventDefault()`, and ask the host to open it:
+
+```js
+parent.postMessage({ code: 'OPEN_URL', data: { url } }, '*');
+```
+
+So a page that links out should attach one delegated click listener that turns link clicks into
+`OPEN_URL` messages (leaving in-page `#fragment` anchors alone).

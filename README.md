@@ -5,7 +5,7 @@ Agent Skills for **Yandex DataLens**, portable across
 [Codex](https://developers.openai.com/codex/skills), and
 [OpenCode](https://opencode.ai/docs/skills/). Each skill is a folder written to the open
 [Agent Skills standard](https://agentskills.io) — a `SKILL.md` plus optional scripts, references,
-and assets — so the same knowledge applies whether you drive DataLens from the UI, an SDK, the
+and assets — so the same knowledge applies whether you drive DataLens from the UI, the
 HTTP API, or an MCP server.
 
 ## Skills

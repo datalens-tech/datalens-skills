@@ -22,6 +22,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Test RLS subject resolution
+        run: python skills/datalens-rls-resolve/tests/test_rls_tool.py
+
       - name: Lint HTML pages (self-test + assets)
         run: |
           python skills/datalens-html-pages/scripts/validate_page.py --self-test

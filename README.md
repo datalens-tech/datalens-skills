@@ -13,6 +13,7 @@ HTTP API, or an MCP server.
 | Skill | What it does |
 |-------|--------------|
 | [`datalens-html-pages`](skills/datalens-html-pages/SKILL.md) | Author, sanitize, validate, and publish standalone HTML pages (AI-generated reports) that render in a sandboxed iframe under an injected CSP. |
+| [`datalens-rls-resolve`](skills/datalens-rls-resolve/SKILL.md) | Resolve Yandex Cloud users and groups into DataLens RLSv2 subject IDs, or convert a legacy `rls` configuration to `rls2`. |
 
 ## Install
 
@@ -22,9 +23,11 @@ detecting it automatically:
 
 ```bash
 npx skills add datalens-tech/datalens-skills --skill datalens-html-pages
+npx skills add datalens-tech/datalens-skills --skill datalens-rls-resolve
 ```
 
-Add `--agent '*'` to install into every agent you have, or `-g` for a global (all-projects) install.
+Choose the skill you need. Add `--agent '*'` to install it into every agent you have, or `-g` for
+a global (all-projects) install.
 
 **Claude Code — native plugin.** If you prefer the built-in flow, this repo is also a plugin
 marketplace:
@@ -34,9 +37,9 @@ marketplace:
 /plugin install datalens-skills@datalens
 ```
 
-**Manual.** A skill is just a folder — copy `skills/datalens-html-pages/` into the directory your
-agent scans: `.claude/skills/` (Claude Code), `.agents/skills/` (Codex), or `.opencode/skills/`
-(OpenCode), or the matching `~/…` path for a global install.
+**Manual.** A skill is just a folder — copy the selected directory from `skills/` into the
+directory your agent scans: `.claude/skills/` (Claude Code), `.agents/skills/` (Codex), or
+`.opencode/skills/` (OpenCode), or the matching `~/…` path for a global install.
 
 Full per-tool paths and contributor setup are in **[INSTALL.md](INSTALL.md)**.
 
@@ -45,9 +48,10 @@ Full per-tool paths and contributor setup are in **[INSTALL.md](INSTALL.md)**.
 ```bash
 node scripts/validate_skills.mjs                              # frontmatter + naming
 python skills/datalens-html-pages/scripts/validate_page.py -  # HTML page linter (reads stdin)
+python skills/datalens-rls-resolve/tests/test_rls_tool.py      # offline RLS resolver tests
 ```
 
-Both run in CI on every PR and have no external dependencies.
+These checks run in CI on every PR and have no external dependencies.
 
 ## Contributing & license
 

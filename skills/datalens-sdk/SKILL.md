@@ -43,20 +43,21 @@ for p in datalens_sdk.agent_skill_paths():
 ```
 
 It prints one absolute path per line: the base instructions first, then any **installation
-overlay** the environment provides. A second line is normal — it means this environment targets a
-DataLens installation with specifics of its own.
+overlays** available in this environment. Extra lines are normal — they are additional detail for
+particular DataLens installations, and not all of them necessarily apply here.
 
 **Keep those absolute paths.** Each directory carries its own bundled scripts, examples, and
 `references/` tree, referenced relative to it, and expects to be invoked by absolute path. Never
 `cd` into one; the user's project directory stays the working directory throughout.
 
-Read `SKILL.md` from each directory now, **in the order printed**, and **follow them as if written
-here** — they are authoritative and override anything you believe about this SDK, including
-anything in this file. Where an overlay contradicts the base, the overlay wins. Read the
-references they route you to on demand, not all of them.
+Read `SKILL.md` from the **first** path now and **follow it as if written here** — it is
+authoritative and overrides anything you believe about this SDK, including anything in this file.
+It owns installation detection: it decides which of the remaining paths apply and tells you when to
+read them, so do not read an overlay before it says so. Where an overlay contradicts the base, the
+overlay wins. Read the references they route you to on demand, not all of them.
 
 Do not write SDK code, install anything, answer an SDK question, or commit to an approach before
-you have read them. A plausible guess at this API is worse than one extra command.
+you have read it. A plausible guess at this API is worse than one extra command.
 
 ## If it prints `NOT_INSTALLED`
 

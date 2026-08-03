@@ -13,7 +13,7 @@ HTTP API, or an MCP server.
 | Skill | What it does |
 |-------|--------------|
 | [`datalens-html-pages`](skills/datalens-html-pages/SKILL.md) | Author, sanitize, validate, and publish standalone HTML pages (AI-generated reports) that render in a sandboxed iframe under an injected CSP. |
-| [`datalens-rls-resolve`](skills/datalens-rls-resolve/SKILL.md) | Resolve Yandex Cloud users and groups into DataLens RLSv2 subject IDs, or convert a legacy `rls` configuration to `rls2`. |
+| [`datalens-yc-rls-resolve`](skills/datalens-yc-rls-resolve/SKILL.md) | Resolve Yandex Cloud users and groups into DataLens RLSv2 subject IDs, or convert a legacy `rls` configuration to `rls2`. |
 
 ## Install
 
@@ -23,7 +23,7 @@ detecting it automatically:
 
 ```bash
 npx skills add datalens-tech/datalens-skills --skill datalens-html-pages
-npx skills add datalens-tech/datalens-skills --skill datalens-rls-resolve
+npx skills add datalens-tech/datalens-skills --skill datalens-yc-rls-resolve
 ```
 
 Choose the skill you need. Add `--agent '*'` to install it into every agent you have, or `-g` for
@@ -48,7 +48,7 @@ Full per-tool paths and contributor setup are in **[INSTALL.md](INSTALL.md)**.
 ```bash
 node scripts/validate_skills.mjs                              # frontmatter + naming
 python skills/datalens-html-pages/scripts/validate_page.py -  # HTML page linter (reads stdin)
-python skills/datalens-rls-resolve/tests/test_rls_tool.py      # offline RLS resolver tests
+python skills/datalens-yc-rls-resolve/tests/test_rls_tool.py      # offline RLS resolver tests
 ```
 
 These checks run in CI on every PR and have no external dependencies.

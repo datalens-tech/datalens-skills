@@ -6,7 +6,7 @@ untracked under `.skill-creator/`.
 
 Two kinds live here, per skill.
 
-## `datalens-rls-resolve/`
+## `datalens-yc-rls-resolve/`
 
 ### `triggering.json` — *should the skill fire?*
 
@@ -17,8 +17,8 @@ DataLens installations. Run it after changing the skill description:
 
 ```bash
 python -m scripts.run_loop \
-  --eval-set evals/datalens-rls-resolve/triggering.json \
-  --skill-path skills/datalens-rls-resolve \
+  --eval-set evals/datalens-yc-rls-resolve/triggering.json \
+  --skill-path skills/datalens-yc-rls-resolve \
   --model <model-id> --holdout 0.4 --verbose
 ```
 
@@ -29,7 +29,7 @@ and unresolved subjects. These cases require human or model judgement. The bundl
 suite mechanically checks parsing, normalization, RLSv2 assembly, CLI naming, and error handling:
 
 ```bash
-python skills/datalens-rls-resolve/tests/test_rls_tool.py
+python skills/datalens-yc-rls-resolve/tests/test_rls_tool.py
 ```
 
 ## `datalens-html-pages/`
@@ -80,7 +80,7 @@ Only the deterministic checks (see [`../.github/workflows/validate.yml`](../.git
 the model-in-the-loop *generation* evals above are run by hand.
 
 - `node scripts/validate_skills.mjs` — frontmatter + naming
-- `python skills/datalens-rls-resolve/tests/test_rls_tool.py` — offline RLS parsing, resolution,
+- `python skills/datalens-yc-rls-resolve/tests/test_rls_tool.py` — offline RLS parsing, resolution,
   conversion, CLI naming, and error handling
 - `python skills/datalens-html-pages/scripts/validate_page.py --self-test` + linting every shipped page
 - `python evals/datalens-html-pages/grade_report.py --self-test` — the template still demonstrates

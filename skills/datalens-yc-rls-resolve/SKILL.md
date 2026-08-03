@@ -1,7 +1,7 @@
 ---
-name: datalens-rls-resolve
+name: datalens-yc-rls-resolve
 description: >-
-  Use this skill when a DataLens user on datalens.yandex.cloud needs to resolve user, email,
+  Use this skill when a DataLens user on datalens.ru (Yandex Cloud) needs to resolve user, email,
   service-account, or Cloud Organization group names into RLSv2 subject IDs, fill the `rls2`
   field, or migrate a legacy `rls` configuration.
 license: Apache-2.0
@@ -13,12 +13,12 @@ metadata:
 
 ## Overview
 
-For cloud DataLens (`datalens.yandex.cloud`). RLSv2 (the `rls2` field) stores subjects by
+For cloud DataLens on Yandex Cloud (`datalens.ru`). RLSv2 (the `rls2` field) stores subjects by
 **id**, whereas the legacy RLS (the `rls` text config) let you use **names**. This skill
 resolves names → ids via the `yc` CLI (Cloud Organization Manager) and can emit a complete
 `rls2` config.
 
-Users → cloud subject id (`subjectId`, = `subjectClaims.sub`); groups → org group `id`.
+Users → cloud subject id (`subject_claims.sub`); groups → org group `id`.
 `subject_name` is display-only; `subject_id` is what enforcement uses. Unresolved subjects
 in `convert` output become `notfound` with a `!FAILED_` name prefix. In `resolve` output,
 resolved subject objects stay under `resolved` and unresolved input names are listed separately
@@ -56,6 +56,15 @@ under `unresolved`.
 Normalize explicit group names and service-account IDs before invoking the tool. If the user says
 "group Analysts", pass `@group:Analysts`. If the user supplies service-account ID `aje123`, pass
 `@sa:aje123`; do not look it up as a user or ask for the same ID again.
+
+**How users are matched.** The tool lists Cloud Organization members and matches your input,
+case-insensitively, against each member's `preferred_username` (login) and `email`; the id it
+returns is `subject_claims.sub` — exactly what the backend stores. A **full email** is the most
+reliable key. A **bare login** (`ivan`) is treated as `ivan@yandex.ru` (a legacy compatibility
+mapping), so it resolves only for yandex.ru accounts — in a **federated organization** pass the
+full email or the name comes back unresolved. A name that matches more than one subject is left
+unresolved rather than guessed. Large orgs are handled: the tool raises `yc`'s default 1000-row
+`--limit` so members past the first page are not silently dropped.
 
 ## Prerequisites
 

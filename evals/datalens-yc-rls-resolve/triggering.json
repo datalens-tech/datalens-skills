@@ -4,7 +4,7 @@
     "should_trigger": true
   },
   {
-    "query": "Migrate this legacy DataLens rls text config to the new rls2 JSON format on datalens.yandex.cloud and resolve every user and group name.",
+    "query": "Migrate this legacy DataLens rls text config to the new rls2 JSON format on datalens.ru and resolve every user and group name.",
     "should_trigger": true
   },
   {

@@ -1,12 +1,12 @@
 {
-  "skill_name": "datalens-rls-resolve",
+  "skill_name": "datalens-yc-rls-resolve",
   "kind": "behavior",
   "note": "Given a request, does the skill resolve Yandex Cloud identities and assemble the exact DataLens RLSv2 shape without exposing credentials? The offline Python suite mechanically covers parsing, normalization, resolution, conversion, CLI naming, and missing-yc errors; these assertions require human or model judgement.",
   "evals": [
     {
       "id": 1,
       "name": "resolve-mixed-subjects",
-      "prompt": "On datalens.yandex.cloud, resolve alice@example.com, the group Analysts, service-account ID aje-service-1, *, and userid into the subject objects for an rls2 rule. Handle the work for me rather than giving generic documentation.",
+      "prompt": "On datalens.ru, resolve alice@example.com, the group Analysts, service-account ID aje-service-1, *, and userid into the subject objects for an rls2 rule. Handle the work for me rather than giving generic documentation.",
       "expected_output": "The agent checks yc safely, obtains or selects the organization, runs the bundled resolver, and returns subject objects whose authoritative subject_id and subject_type values follow the documented mapping.",
       "files": [],
       "assertions": [
@@ -18,7 +18,7 @@
     {
       "id": 2,
       "name": "convert-legacy-config",
-      "prompt": "Convert this legacy DataLens RLS config to exact rls2 JSON: {\"field_a\": \"'Naperville': @group:Analysts\\n*: bob\"}. The target is datalens.yandex.cloud.",
+      "prompt": "Convert this legacy DataLens RLS config to exact rls2 JSON: {\"field_a\": \"'Naperville': @group:Analysts\\n*: bob\"}. The target is datalens.ru.",
       "expected_output": "The agent runs the bundled convert mode and returns field_a as a list of value/all rules, each containing a nested subject object plus allowed_value and pattern_type.",
       "files": [],
       "assertions": [

@@ -11,7 +11,8 @@ import io
 import json
 import os
 import sys
-from contextlib import redirect_stdout
+import tempfile
+from contextlib import redirect_stderr, redirect_stdout
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -156,46 +157,82 @@ class TestCliOutput(unittest.TestCase):
 
 
 class TestYandexCloudAdapter(unittest.TestCase):
-    def test_resolves_member_claims_and_group_id(self):
+    """Matches the real `yc ... user list` shape: OrganizationUser -> {subject_claims: {...}},
+    id at subject_claims.sub, preferred_username always present, email only sometimes."""
+
+    def _resolver_with_members(self):
         resolver = rls_tool.YandexCloudResolver("org1")
         resolver._members_cache = [
-            {
-                "subjectId": "aje-alice",
-                "subjectClaims": {"preferredUsername": "alice", "email": "alice@example.com"},
-            }
+            # yandex.ru user: preferred_username email-shaped, email also present.
+            {"subject_claims": {"sub": "aje-alice", "preferred_username": "alice@yandex.ru",
+                                "email": "alice@yandex.ru", "sub_type": "USER_ACCOUNT"}},
+            # federated user: preferred_username present, NO email (the common yc case).
+            {"subject_claims": {"sub": "aje-fed", "preferred_username": "bob@corp.com",
+                                "sub_type": "USER_ACCOUNT"}},
+            # service account reusing alice's login: must be ignored for user matching.
+            {"subject_claims": {"sub": "sa-x", "preferred_username": "alice@yandex.ru",
+                                "sub_type": "SERVICE_ACCOUNT"}},
         ]
         resolver._groups_cache = [{"name": "Analysts", "id": "grp-1"}]
+        return resolver
 
+    def test_user_resolution_reads_sub_and_is_case_insensitive(self):
+        resolver = self._resolver_with_members()
         self.assertEqual(
-            resolver.resolve_users(["alice", "alice@example.com", "ghost"]),
-            {"alice": "aje-alice", "alice@example.com": "aje-alice", "ghost": None},
+            resolver.resolve_users(["alice", "Alice@Yandex.RU", "bob@corp.com", "bob", "ghost"]),
+            {
+                "alice": "aje-alice",            # bare login -> @yandex.ru account
+                "Alice@Yandex.RU": "aje-alice",  # case-insensitive full email
+                "bob@corp.com": "aje-fed",       # federated user resolved via preferred_username (no email)
+                "bob": None,                     # bare federated login does not resolve
+                "ghost": None,                   # missing
+            },
         )
-        self.assertEqual(resolver.resolve_group("Analysts"), "grp-1")
+
+    def test_service_accounts_are_not_matched_as_users(self):
+        # The SERVICE_ACCOUNT reusing alice's login is filtered out, so alice stays unambiguous.
+        resolver = self._resolver_with_members()
+        self.assertEqual(resolver.resolve_users(["alice@yandex.ru"]), {"alice@yandex.ru": "aje-alice"})
+
+    def test_ambiguous_user_is_left_unresolved(self):
+        resolver = rls_tool.YandexCloudResolver("org1")
+        resolver._members_cache = [
+            {"subject_claims": {"sub": "id1", "preferred_username": "dup@yandex.ru", "sub_type": "USER_ACCOUNT"}},
+            {"subject_claims": {"sub": "id2", "preferred_username": "dup@yandex.ru", "sub_type": "USER_ACCOUNT"}},
+        ]
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(resolver.resolve_users(["dup@yandex.ru"]), {"dup@yandex.ru": None})
+
+    def test_group_resolves_by_exact_name(self):
+        self.assertEqual(self._resolver_with_members().resolve_group("Analysts"), "grp-1")
+
+    def test_duplicate_group_name_is_left_unresolved(self):
+        resolver = rls_tool.YandexCloudResolver("org1")
+        resolver._groups_cache = [{"name": "Dups", "id": "g1"}, {"name": "Dups", "id": "g2"}]
+        with redirect_stderr(io.StringIO()):
+            self.assertIsNone(resolver.resolve_group("Dups"))
+
+    @mock.patch.object(rls_tool.subprocess, "run")
+    def test_user_list_passes_limit_to_defeat_truncation(self, run):
+        run.return_value = SimpleNamespace(returncode=0, stdout="[]", stderr="")
+        rls_tool.YandexCloudResolver("org1")._members()
+        run.assert_called_once_with(
+            ["yc", "organization-manager", "user", "list", "--limit", "1000000",
+             "--organization-id", "org1", "--format", "json"],
+            capture_output=True, text=True, check=False,
+        )
 
     @mock.patch.object(rls_tool.subprocess, "run")
     def test_yc_group_list_uses_exact_organization_arguments(self, run):
         run.return_value = SimpleNamespace(
-            returncode=0,
-            stdout='[{"name": "Analysts", "id": "grp-1"}]',
-            stderr="",
+            returncode=0, stdout='[{"name": "Analysts", "id": "grp-1"}]', stderr="",
         )
         resolver = rls_tool.YandexCloudResolver("org1")
-
         self.assertEqual(resolver.resolve_group("Analysts"), "grp-1")
         run.assert_called_once_with(
-            [
-                "yc",
-                "organization-manager",
-                "group",
-                "list",
-                "--organization-id",
-                "org1",
-                "--format",
-                "json",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+            ["yc", "organization-manager", "group", "list", "--limit", "1000000",
+             "--organization-id", "org1", "--format", "json"],
+            capture_output=True, text=True, check=False,
         )
 
 
@@ -241,6 +278,90 @@ class TestYcErrorSurfacing(unittest.TestCase):
             rls_tool.main(["resolve", "--org-id", "org1", "alice"])
 
         self.assertIn("Re-authenticate", str(exit_info.exception))
+
+
+class TestLegacyParserErrors(unittest.TestCase):
+    def _err(self, config):
+        with self.assertRaises(ValueError) as ctx:
+            rls_tool.parse_legacy_field_config(config)
+        return str(ctx.exception)
+
+    def test_star_star_disables_rls(self):
+        self.assertIn("not allowed", self._err("*: *"))
+
+    def test_wildcard_with_other_subjects(self):
+        self.assertIn("only subject", self._err("'Moscow': alice, *"))
+
+    def test_unquoted_value(self):
+        self.assertIn("wrong format", self._err("Moscow: alice"))
+
+    def test_unclosed_quote(self):
+        self.assertIn("Unclosed", self._err("'Moscow: alice"))
+
+    def test_missing_colon_after_star(self):
+        self.assertIn("expected ':'", self._err("* alice"))
+
+
+class TestMainFriendlyErrors(unittest.TestCase):
+    @mock.patch.object(rls_tool, "YandexCloudResolver")
+    def test_invalid_json_reports_friendly_error(self, resolver_class):
+        with mock.patch.object(rls_tool.sys, "stdin", io.StringIO("{not json")):
+            with self.assertRaises(SystemExit) as ctx:
+                rls_tool.main(["convert", "--org-id", "org1"])
+        self.assertIn("invalid JSON", str(ctx.exception))
+
+    @mock.patch.object(rls_tool, "YandexCloudResolver")
+    def test_parser_error_reports_line_number(self, resolver_class):
+        resolver_class.return_value = FakeResolver(users={}, groups={})
+        with mock.patch.object(rls_tool.sys, "stdin", io.StringIO('{"f1": "Moscow: bob"}')):
+            with self.assertRaises(SystemExit) as ctx:
+                rls_tool.main(["convert", "--org-id", "org1"])
+        message = str(ctx.exception)
+        self.assertTrue(message.startswith("ERROR:"))
+        self.assertIn("Line 1", message)
+
+
+class TestConvertCli(unittest.TestCase):
+    @mock.patch.object(rls_tool, "YandexCloudResolver")
+    def test_convert_reads_stdin_and_emits_rls2(self, resolver_class):
+        resolver_class.return_value = FakeResolver(users={"bob": "aje-bob"}, groups={})
+        out = io.StringIO()
+        with mock.patch.object(rls_tool.sys, "stdin", io.StringIO('{"f1": "*: bob"}')), \
+                redirect_stderr(io.StringIO()), redirect_stdout(out):
+            rls_tool.cmd_convert(SimpleNamespace(org_id="org1", input=None))
+        self.assertEqual(json.loads(out.getvalue())["f1"][0]["subject"]["subject_id"], "aje-bob")
+
+    @mock.patch.object(rls_tool, "YandexCloudResolver")
+    def test_convert_reads_input_file(self, resolver_class):
+        resolver_class.return_value = FakeResolver(users={"bob": "aje-bob"}, groups={})
+        fd, path = tempfile.mkstemp(suffix=".json")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write('{"f1": "*: bob"}')
+            out = io.StringIO()
+            with redirect_stderr(io.StringIO()), redirect_stdout(out):
+                rls_tool.cmd_convert(SimpleNamespace(org_id="org1", input=path))
+            self.assertIn("aje-bob", out.getvalue())
+        finally:
+            os.unlink(path)
+
+    @mock.patch.object(rls_tool, "YandexCloudResolver")
+    def test_convert_rejects_non_dict(self, resolver_class):
+        resolver_class.return_value = FakeResolver(users={}, groups={})
+        with mock.patch.object(rls_tool.sys, "stdin", io.StringIO('["not", "a", "dict"]')):
+            with self.assertRaises(SystemExit) as ctx:
+                rls_tool.cmd_convert(SimpleNamespace(org_id="org1", input=None))
+        self.assertIn("expects a JSON object", str(ctx.exception))
+
+    @mock.patch.object(rls_tool, "YandexCloudResolver")
+    def test_convert_warns_about_unresolved_on_stderr(self, resolver_class):
+        resolver_class.return_value = FakeResolver(users={}, groups={})
+        err = io.StringIO()
+        with mock.patch.object(rls_tool.sys, "stdin", io.StringIO('{"f1": "*: ghost@yandex.ru"}')), \
+                redirect_stdout(io.StringIO()), redirect_stderr(err):
+            rls_tool.cmd_convert(SimpleNamespace(org_id="org1", input=None))
+        self.assertIn("WARNING", err.getvalue())
+        self.assertIn("unresolved", err.getvalue())
 
 
 if __name__ == "__main__":

@@ -31,6 +31,10 @@ GROUP_PREFIX = "@group:"
 SA_PREFIX = "@sa:"
 ALL_NAME = "*"
 USERID_NAME = "userid"
+# Backend `_login_to_email` default domain (a to-be-deprecated compatibility mapping):
+# a bare login `ivan` is treated as `ivan@yandex.ru`, so it resolves only against
+# yandex.ru accounts, never federated ones. See references/id-formats.md.
+DEFAULT_DOMAIN = "yandex.ru"
 
 
 class YcError(RuntimeError):
@@ -44,11 +48,6 @@ class YcPermissionError(YcError):
 # --------------------------------------------------------------------------------------
 # Ported pure logic (from dl_rls; kept in sync by hand — this skill is standalone).
 # --------------------------------------------------------------------------------------
-
-
-def is_slug(group_id, group_name):
-    """A group is still a slug (unresolved) when its id equals its name minus ``@group:``."""
-    return group_id == group_name.strip().removeprefix(GROUP_PREFIX)
 
 
 def split_by_quoted_quote(value, quote="'"):
@@ -120,6 +119,8 @@ def _parse_single_line(line, idx):
     rest = rest.strip()
     if not rest.startswith(":"):
         raise ValueError(f"Line {idx + 1}: expected ':' after quoted value")
+    # Intentionally lenient: the backend regex requires "': " (colon-space) while we accept
+    # `'value':x` without the space. Harmless in the legacy->rls2 direction (accepts a superset).
     return "value", value, rest[1:].strip()
 
 
@@ -132,10 +133,12 @@ def _validate_wildcard(subject_names, pattern_type, idx):
 
 
 def normalize_subject_name(name):
-    """Normalize a raw input token to a canonical subject name.
+    """Trim a raw input token; the display/``subject_name`` form is preserved as typed.
 
-    In cloud, users are matched by login OR email exactly as typed (no domain stripping),
-    and groups are referenced by name via ``@group:<name>``. Specials/SA pass through.
+    This only strips surrounding whitespace and keeps the token as-is (groups stay
+    ``@group:<name>``, service accounts ``@sa:<id>``, specials pass through). Actual user
+    matching is case-insensitive and login/email aware and happens in the resolver
+    (``_canonize`` / ``YandexCloudResolver.resolve_users``), not here.
     """
     name = name.strip()
     if name in (ALL_NAME, USERID_NAME):
@@ -211,6 +214,13 @@ def resolve_names(names, resolver):
     """Resolve a list of canonical subject names to RLSv2 subject dicts."""
     canonical = [normalize_subject_name(n) for n in names]
     user_logins = sorted({n for n in canonical if classify(n) == "user"})
+    bare_logins = [n for n in user_logins if "@" not in n]
+    if bare_logins:
+        print(
+            f"WARNING: bare login(s) {bare_logins} are resolved only against @{DEFAULT_DOMAIN} "
+            "accounts; pass full emails for federated organizations.",
+            file=sys.stderr,
+        )
     user_ids = resolver.resolve_users(user_logins) if user_logins else {}
 
     subjects = {}
@@ -282,7 +292,22 @@ def _claim(claims, *keys):
     return None
 
 
+def _canonize(name):
+    """Canonicalize a login/email for matching, mirroring the backend resolver.
+
+    Lowercase, trim, and drop the default ``@yandex.ru`` suffix so a bare login and the
+    corresponding yandex.ru email compare equal (backend ``_canonize_subject_name`` +
+    ``_login_to_email``). Federated emails on other domains are compared in full.
+    """
+    return name.strip().lower().removesuffix("@" + DEFAULT_DOMAIN)
+
+
 class YandexCloudResolver(SubjectResolver):
+    # `yc ... user list` / `group list` default to --limit 1000 and silently truncate a
+    # larger org. Pass a high ceiling: the CLI auto-paginates and stops once the pages are
+    # exhausted, so this is only an upper bound (not a fetch count).
+    LIST_LIMIT = "1000000"
+
     def __init__(self, org_id):
         self._org_id = org_id
         self._members_cache = None
@@ -308,43 +333,58 @@ class YandexCloudResolver(SubjectResolver):
 
     def _members(self):
         if self._members_cache is None:
-            self._members_cache = self._yc("organization-manager", "user", "list")
+            self._members_cache = self._yc("organization-manager", "user", "list", "--limit", self.LIST_LIMIT)
         return self._members_cache
 
     def _groups(self):
         if self._groups_cache is None:
-            self._groups_cache = self._yc("organization-manager", "group", "list")
+            self._groups_cache = self._yc("organization-manager", "group", "list", "--limit", self.LIST_LIMIT)
         return self._groups_cache
 
     @staticmethod
-    def _subject_id(member):
-        return member.get("subjectId") or member.get("subject_id") or member.get("id")
-
-    @staticmethod
     def _claims(member):
-        return member.get("subjectClaims") or member.get("subject_claims") or {}
+        return member.get("subject_claims") or member.get("subjectClaims") or {}
 
     def resolve_users(self, logins):
-        # No server-side login/email filter on user list; match client-side on claims.
-        members = self._members()
-        by_login = {}
-        by_email = {}
-        for member in members:
+        # `yc organization-manager user list` returns OrganizationUser objects whose only
+        # field is `subject_claims` (sub, preferred_username, email, sub_type). The subject
+        # id is `subject_claims.sub` — the exact value the backend stores as rls2 subject_id.
+        # Every user account carries preferred_username (a login, usually email-shaped) but
+        # email only sometimes, so index on preferred_username AND email (canonicalized) and
+        # restrict to USER_ACCOUNT (the backend's DEFAULT_SUBJECT_TYPE_FILTER). See
+        # references/id-formats.md.
+        index = {}  # canonical login/email -> set of subject ids
+        for member in self._members():
             claims = self._claims(member)
-            subject_id = self._subject_id(member)
-            login = _claim(claims, "preferredUsername", "preferred_username", "name")
-            email = _claim(claims, "email")
-            if login:
-                by_login[login] = subject_id
-            if email:
-                by_email[email] = subject_id
-        return {login: by_login.get(login) or by_email.get(login) for login in logins}
+            sub_type = _claim(claims, "sub_type", "subType")
+            if sub_type and sub_type != "USER_ACCOUNT":
+                continue
+            sub = _claim(claims, "sub")
+            if not sub:
+                continue
+            for raw in (_claim(claims, "preferred_username", "preferredUsername"), _claim(claims, "email")):
+                if raw:
+                    index.setdefault(_canonize(raw), set()).add(sub)
+        resolved = {}
+        for login in logins:
+            subs = index.get(_canonize(login), set())
+            if len(subs) == 1:
+                resolved[login] = next(iter(subs))
+            else:
+                if len(subs) > 1:
+                    # Never guess between distinct subjects — leave unresolved.
+                    print(f"WARNING: {login!r} matches multiple subjects; left unresolved.", file=sys.stderr)
+                resolved[login] = None
+        return resolved
 
     def resolve_group(self, spec):
-        # In cloud, a group is referenced by its name.
-        for group in self._groups():
-            if group.get("name") == spec:
-                return group.get("id")
+        # Match by exact group name and require exactly one hit, mirroring the backend's
+        # resolve_group_by_name (which returns None on 0 or >1 rather than silently picking one).
+        ids = list({group.get("id") for group in self._groups() if group.get("name") == spec and group.get("id")})
+        if len(ids) == 1:
+            return ids[0]
+        if len(ids) > 1:
+            print(f"WARNING: group name {spec!r} is ambiguous ({len(ids)} groups); left unresolved.", file=sys.stderr)
         return None
 
 
@@ -381,7 +421,11 @@ def cmd_resolve(args):
 
 def cmd_convert(args):
     resolver = YandexCloudResolver(args.org_id)
-    raw = open(args.input, encoding="utf-8").read() if args.input else sys.stdin.read()
+    if args.input:
+        with open(args.input, encoding="utf-8") as handle:
+            raw = handle.read()
+    else:
+        raw = sys.stdin.read()
     rls_config = json.loads(raw)
     if not isinstance(rls_config, dict):
         sys.exit("convert expects a JSON object {field_guid: \"text config\"}.")
@@ -429,6 +473,12 @@ def main(argv=None):
         )
     except YcError as exc_value:
         sys.exit(f"ERROR: {exc_value}\nRe-authenticate the yc CLI (see the skill's yc-auth step) and retry.")
+    except json.JSONDecodeError as exc_value:
+        # Must precede ValueError (JSONDecodeError subclasses it).
+        sys.exit(f"ERROR: invalid JSON input: {exc_value}")
+    except ValueError as exc_value:
+        # Legacy-config parse errors already carry a line-numbered message.
+        sys.exit(f"ERROR: {exc_value}")
 
 
 if __name__ == "__main__":

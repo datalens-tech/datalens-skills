@@ -11,7 +11,7 @@ use — Claude Code, Codex, OpenCode, and more — detecting it automatically:
 
 ```bash
 npx skills add datalens-tech/datalens-skills --skill datalens-html-pages
-npx skills add datalens-tech/datalens-skills --skill datalens-rls-resolve
+npx skills add datalens-tech/datalens-skills --skill datalens-yc-rls-resolve
 ```
 
 - `--agent '*'` — install into every agent you have (by default it targets the one it detects)
@@ -29,7 +29,7 @@ If you prefer the built-in flow, this repo is also a Claude Code plugin marketpl
 ```
 
 Installed skills are namespaced by the plugin, e.g. `datalens-skills:datalens-html-pages` and
-`datalens-skills:datalens-rls-resolve`.
+`datalens-skills:datalens-yc-rls-resolve`.
 
 ## Manual — copy the folder
 
@@ -44,10 +44,10 @@ A skill is just a folder; drop the one(s) you want straight into the directory y
 ```bash
 git clone https://github.com/datalens-tech/datalens-skills
 cp -R datalens-skills/skills/datalens-html-pages ~/.claude/skills/
-cp -R datalens-skills/skills/datalens-rls-resolve ~/.agents/skills/
+cp -R datalens-skills/skills/datalens-yc-rls-resolve ~/.claude/skills/
 ```
 
-Copy only the skill or skills you need; either destination can be replaced with another supported
+Copy only the skill or skills you need; `~/.claude/skills/` can be replaced with any other supported
 directory from the table above.
 
 Two things make this simpler than the table suggests:
@@ -63,7 +63,7 @@ Restart your agent afterward so it re-scans skills.
 ## Verify it loaded
 
 The selected skill should show up in your agent's list of available skills —
-`datalens-html-pages` or `datalens-rls-resolve` when installed directly, and prefixed with
+`datalens-html-pages` or `datalens-yc-rls-resolve` when installed directly, and prefixed with
 `datalens-skills:` when installed through the Claude Code plugin.
 
 ---

@@ -13,6 +13,7 @@ HTTP API, or an MCP server.
 | Skill | What it does |
 |-------|--------------|
 | [`datalens-html-pages`](skills/datalens-html-pages/SKILL.md) | Author, sanitize, validate, and publish standalone HTML pages (AI-generated reports) that render in a sandboxed iframe under an injected CSP. |
+| [`datalens-sdk`](skills/datalens-sdk/SKILL.md) | Drive DataLens from Python — connections, datasets, charts, dashboards. Loads its instructions from the installed SDK package so they always match the installed version. |
 
 ## Install
 

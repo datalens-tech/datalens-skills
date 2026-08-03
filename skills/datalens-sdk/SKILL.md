@@ -20,42 +20,43 @@ metadata:
 
 Operate Yandex DataLens through the official Python SDK — never hand-built HTTP requests.
 
-**The instructions for this skill are stored inside the installed `datalens-sdk` package.** The
-SDK is a 0.x alpha where minor releases rename classes and methods, so instructions that shipped
-separately would describe an API the user does not have. Load them from the package before doing
-anything else.
+**The instructions for this skill are stored inside the installed `datalens-sdk` package**, and are
+extended there by whatever DataLens installation the environment targets. The SDK is a 0.x alpha
+where minor releases rename classes and methods, so instructions that shipped separately would
+describe an API the user does not have. Load them from the package before doing anything else.
 
 ## Load the instructions
 
-Resolve the skill directory, preferring the project's interpreter (`.venv/bin/python`,
+Resolve the skill directories, preferring the project's interpreter (`.venv/bin/python`,
 `uv run python`, `poetry run python`):
 
 ```bash
 python -c "
-import importlib, pathlib
-for mod in ('datalens_sdk_ya', 'datalens_sdk'):
-    try:
-        p = pathlib.Path(importlib.import_module(mod).__file__).parent / 'skills' / 'datalens-sdk'
-    except ImportError:
-        continue
-    if p.is_dir():
-        print(p)
-        break
-else:
-    print('NOT_INSTALLED')
+import sys
+try:
+    import datalens_sdk
+except ImportError:
+    print('NOT_INSTALLED'); sys.exit()
+for p in datalens_sdk.agent_skill_paths():
+    print(p)
 "
 ```
 
-**Keep that absolute path** — the instructions reference bundled scripts, examples, and a
-`references/` tree relative to it, and expect to be invoked by absolute path. Never `cd` into the
-directory; the user's project directory stays the working directory throughout.
+It prints one absolute path per line: the base instructions first, then any **installation
+overlay** the environment provides. A second line is normal — it means this environment targets a
+DataLens installation with specifics of its own.
 
-Read `SKILL.md` from there now and **follow it as if it were written here** — it is authoritative
-and overrides anything you believe about this SDK, including anything in this file. Read the
-references it routes you to on demand, not all of them.
+**Keep those absolute paths.** Each directory carries its own bundled scripts, examples, and
+`references/` tree, referenced relative to it, and expects to be invoked by absolute path. Never
+`cd` into one; the user's project directory stays the working directory throughout.
+
+Read `SKILL.md` from each directory now, **in the order printed**, and **follow them as if written
+here** — they are authoritative and override anything you believe about this SDK, including
+anything in this file. Where an overlay contradicts the base, the overlay wins. Read the
+references they route you to on demand, not all of them.
 
 Do not write SDK code, install anything, answer an SDK question, or commit to an approach before
-you have read it. A plausible guess at this API is worse than one extra command.
+you have read them. A plausible guess at this API is worse than one extra command.
 
 ## If it prints `NOT_INSTALLED`
 

@@ -1,0 +1,82 @@
+[
+  {
+    "query": "I need to fill a DataLens dataset's rls2 field, but I only have Yandex Cloud user emails and Cloud Organization group names. Resolve them to the subject_id values the backend expects.",
+    "should_trigger": true
+  },
+  {
+    "query": "Migrate this legacy DataLens rls text config to the new rls2 JSON format on datalens.ru and resolve every user and group name.",
+    "should_trigger": true
+  },
+  {
+    "query": "What exact RLSv2 subject object should I store for alice@example.com in Yandex DataLens Cloud? I need subject_id, subject_name, and subject_type.",
+    "should_trigger": true
+  },
+  {
+    "query": "Resolve @group:Finance Analysts into the Yandex Cloud Organization group ID used by DataLens RLSv2.",
+    "should_trigger": true
+  },
+  {
+    "query": "My DataLens RLS migration produced !FAILED_bob and a notfound subject. Help me resolve the correct Cloud Organization identity and rerun it.",
+    "should_trigger": true
+  },
+  {
+    "query": "The yc organization-manager user list call gets PermissionDenied while I am resolving DataLens RLS subjects. What role is required and how should the resolver proceed?",
+    "should_trigger": true
+  },
+  {
+    "query": "Check yc authentication safely without printing an IAM token, then resolve the users for my DataLens rls2 rules.",
+    "should_trigger": true
+  },
+  {
+    "query": "I belong to several Yandex Cloud organizations. Determine which organization to use before converting the DataLens legacy RLS configuration.",
+    "should_trigger": true
+  },
+  {
+    "query": "Create the DataLens RLSv2 subject entries for *, userid, @sa:aje123, a user email, and a Cloud Organization group.",
+    "should_trigger": true
+  },
+  {
+    "query": "The backend rejects my DataLens dataset because both rls and rls2 are present. Convert the old configuration and tell me which field to send.",
+    "should_trigger": true
+  },
+  {
+    "query": "How do I add a calculated field in DataLens that labels rows as confidential or public?",
+    "should_trigger": false
+  },
+  {
+    "query": "Design row-level security policies for PostgreSQL using CREATE POLICY and current_user.",
+    "should_trigger": false
+  },
+  {
+    "query": "Configure BigQuery row access policies for our analytics tables and service accounts.",
+    "should_trigger": false
+  },
+  {
+    "query": "How do I create a Yandex Cloud service account and grant it editor on a folder?",
+    "should_trigger": false
+  },
+  {
+    "query": "List all users and groups in a Yandex Cloud Organization for an IAM audit unrelated to DataLens.",
+    "should_trigger": false
+  },
+  {
+    "query": "Implement tenant isolation in our application database with a tenant_id column.",
+    "should_trigger": false
+  },
+  {
+    "query": "Set up RLS for an on-premise DataLens installation that does not use Yandex Cloud Organization Manager.",
+    "should_trigger": false
+  },
+  {
+    "query": "Build a DataLens chart filtered to the current dashboard user's department.",
+    "should_trigger": false
+  },
+  {
+    "query": "My yc CLI profile points at the wrong cloud and folder. How do I change the defaults?",
+    "should_trigger": false
+  },
+  {
+    "query": "Explain the difference between RBAC and row-level security in general terms.",
+    "should_trigger": false
+  }
+]

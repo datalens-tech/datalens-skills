@@ -41,7 +41,7 @@ under `unresolved`.
 | Mode | Input | Output |
 |------|-------|--------|
 | `resolve` | subject names (logins, emails, group names) | `rls2` `subject` objects + unresolved list |
-| `convert` | a legacy `rls` config `{field_guid: "text"}` | the full exact `rls2` config `{field_guid: [rules]}` |
+| `convert` | the legacy `rls` config — JSON `{field_guid: "<text>"}` (one or many fields), or a single field's raw RLS text | the full exact `rls2` config `{field_guid: [rules]}` |
 
 ## Subject input format
 
@@ -66,6 +66,33 @@ full email or the name comes back unresolved. A name that matches more than one 
 unresolved rather than guessed. Large orgs are handled: the tool raises `yc`'s default 1000-row
 `--limit` so members past the first page are not silently dropped.
 
+## Convert input — the legacy `rls` config
+
+`convert` takes the dataset's legacy **`rls`** field: a JSON object mapping each **field guid** to
+that field's RLS **text** — the text you edit in a field's *Row-level security* settings. It
+accepts the whole config (every field) **or** a single field; `{"<one_guid>": "<text>"}` is
+equally valid, and the output is keyed by the same guids.
+
+Each field's text uses the legacy grammar (one rule per line):
+
+```
+'Moscow': alice@example.com, @group:Analysts
+'Tver': alice@example.com
+*: bob@example.com
+userid: userid
+```
+
+- `'value': subjects` — one quoted value per line; those subjects see rows where the field equals
+  `value` (double `''` inside to escape a literal quote).
+- `*: subjects` — those subjects see all rows.
+- `userid: userid` — filter rows by the field equalling the viewer's own id.
+
+When the user pastes **just one field's text** (the common case — copied from the field's RLS
+settings), convert it directly: pass the raw text (stdin or `--input`) and `convert` emits the
+rules under a `<field_guid>` placeholder to substitute later. The guid is optional — it never
+affects the resolved subjects, only the output key — so if you do have it, wrap the text yourself
+as `{"<field_guid>": "<text>"}` to key the output correctly.
+
 ## Prerequisites
 
 - Python 3.9+ (standard library only — no `pip install`).
@@ -76,20 +103,23 @@ unresolved rather than guessed. Large orgs are handled: the tool raises `yc`'s d
 
 ## Authenticate `yc` — YOU run these checks; never expose the token
 
-Run these yourself with the Bash tool and read **only the exit code**:
+Check the session with the bundled wrapper — it runs the token call for you with output
+discarded and a timeout, and prints only a status word (never the token):
 
-1. Is `yc` installed? — `command -v yc`
-2. Is the session valid? — `yc iam create-token >/dev/null 2>&1`
-   - exit 0 → authenticated; continue.
-   - non-zero → re-authenticate (below).
+```bash
+python3 scripts/rls_tool.py auth-check   # -> authenticated | not_authenticated | timeout | not_installed
+```
 
-The `>/dev/null 2>&1` on step 2 is **mandatory**: `yc iam create-token` prints a live token,
-and the redirect throws it away so it is never shown.
+- `authenticated` → continue.
+- `not_authenticated` / `not_installed` → re-authenticate or install (below).
+- `timeout` → the check is blocked — often an interactive hardware-key touch, or a sandbox
+  withholding network. Re-authenticate interactively with `yc init` (below), where you can
+  respond to the prompt.
 
-**NEVER run `yc config list`, `yc config get token`, or `yc iam create-token` without the
-redirect** — they print the OAuth token / SA key into the transcript. Do not print, echo,
-log, or store any token or key. (`yc config profile list`, which shows only profile names,
-is fine if you need to check which profile is active.)
+Prefer the wrapper so a live token is never exposed. **Backstop — never run these yourself:**
+`yc iam create-token` without redirecting output, or `yc config list` / `yc config get token` —
+they print the OAuth token / SA key into the transcript. Never print, echo, log, or store any
+token or key. (`yc config profile list`, which shows only profile names, is fine.)
 
 ### Re-authenticate — drive it, don't hand the user a to-do list
 
@@ -106,8 +136,8 @@ token exchange`). Use one of these instead:
 - **Service-account key.** If the user has an SA key file:
   `yc config set service-account-key <path>` (a path, not a secret).
 
-Then re-check `yc iam create-token >/dev/null 2>&1` and proceed. Do **not** stop and dump a
-list of manual steps — drive the flow, and only hand off the single interactive browser step.
+Then re-check with `python3 scripts/rls_tool.py auth-check` and proceed. Do **not** stop and dump
+a list of manual steps — drive the flow, and only hand off the single interactive browser step.
 
 ## Organization id — YOU fetch it
 
@@ -124,8 +154,10 @@ and show them the output.
 # resolve names
 python3 scripts/rls_tool.py resolve --org-id <ORG_ID> alice@example.com "@group:Analysts" bob
 
-# convert a legacy rls config -> full rls2 (rls JSON on stdin, or --input FILE)
+# convert the legacy rls -> full rls2 (rls JSON via --input FILE or stdin)
 python3 scripts/rls_tool.py convert --org-id <ORG_ID> --input old_rls.json
+# or one field's raw RLS text straight from stdin (guid optional)
+printf "%s\n" "'Moscow': alice@example.com" "*: bob@example.com" | python3 scripts/rls_tool.py convert --org-id <ORG_ID>
 ```
 
 Names may be comma / newline / semicolon separated (not space — cloud group names can
@@ -150,8 +182,8 @@ Subject id details and the `yc` calls are in [references/id-formats.md](referenc
 
 ## Common mistakes
 
-- **Leaking the token.** Never run `yc config list` / `yc config get token`. Check auth
-  only via `yc iam create-token >/dev/null 2>&1` (exit code).
+- **Leaking the token.** Never run `yc config list` / `yc config get token` or an unredirected
+  `yc iam create-token`. Check auth only via `python3 scripts/rls_tool.py auth-check`.
 - **Handing work to the user.** Drive `yc init` and run the resolver yourself; don't tell
   the user to do it.
 - **Sending both `rls` and `rls2`.** The backend rejects a dataset with both set — send

@@ -304,11 +304,14 @@ class TestLegacyParserErrors(unittest.TestCase):
 
 class TestMainFriendlyErrors(unittest.TestCase):
     @mock.patch.object(rls_tool, "YandexCloudResolver")
-    def test_invalid_json_reports_friendly_error(self, resolver_class):
-        with mock.patch.object(rls_tool.sys, "stdin", io.StringIO("{not json")):
+    def test_malformed_input_reports_friendly_error(self, resolver_class):
+        # Non-JSON, non-parseable text: a friendly ERROR (line-numbered), never a traceback.
+        resolver_class.return_value = FakeResolver(users={}, groups={})
+        with mock.patch.object(rls_tool.sys, "stdin", io.StringIO("garbage line with no marker")), \
+                redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as ctx:
                 rls_tool.main(["convert", "--org-id", "org1"])
-        self.assertIn("invalid JSON", str(ctx.exception))
+        self.assertTrue(str(ctx.exception).startswith("ERROR:"))
 
     @mock.patch.object(rls_tool, "YandexCloudResolver")
     def test_parser_error_reports_line_number(self, resolver_class):
@@ -346,12 +349,26 @@ class TestConvertCli(unittest.TestCase):
             os.unlink(path)
 
     @mock.patch.object(rls_tool, "YandexCloudResolver")
-    def test_convert_rejects_non_dict(self, resolver_class):
-        resolver_class.return_value = FakeResolver(users={}, groups={})
-        with mock.patch.object(rls_tool.sys, "stdin", io.StringIO('["not", "a", "dict"]')):
-            with self.assertRaises(SystemExit) as ctx:
-                rls_tool.cmd_convert(SimpleNamespace(org_id="org1", input=None))
-        self.assertIn("expects a JSON object", str(ctx.exception))
+    def test_convert_accepts_single_field_raw_text(self, resolver_class):
+        # No {field_guid: ...} wrapper: raw text converts under the placeholder guid.
+        resolver_class.return_value = FakeResolver(users={"bob": "aje-bob"}, groups={})
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(rls_tool.sys, "stdin", io.StringIO("*: bob")), \
+                redirect_stderr(err), redirect_stdout(out):
+            rls_tool.cmd_convert(SimpleNamespace(org_id="org1", input=None))
+        result = json.loads(out.getvalue())
+        self.assertEqual(list(result), ["<field_guid>"])
+        self.assertEqual(result["<field_guid>"][0]["subject"]["subject_id"], "aje-bob")
+        self.assertIn("<field_guid>", err.getvalue())  # NOTE steers the caller to substitute it
+
+    @mock.patch.object(rls_tool, "YandexCloudResolver")
+    def test_convert_treats_json_string_as_raw_text(self, resolver_class):
+        resolver_class.return_value = FakeResolver(users={"bob": "aje-bob"}, groups={})
+        out = io.StringIO()
+        with mock.patch.object(rls_tool.sys, "stdin", io.StringIO(json.dumps("*: bob"))), \
+                redirect_stderr(io.StringIO()), redirect_stdout(out):
+            rls_tool.cmd_convert(SimpleNamespace(org_id="org1", input=None))
+        self.assertEqual(list(json.loads(out.getvalue())), ["<field_guid>"])
 
     @mock.patch.object(rls_tool, "YandexCloudResolver")
     def test_convert_warns_about_unresolved_on_stderr(self, resolver_class):
@@ -362,6 +379,51 @@ class TestConvertCli(unittest.TestCase):
             rls_tool.cmd_convert(SimpleNamespace(org_id="org1", input=None))
         self.assertIn("WARNING", err.getvalue())
         self.assertIn("unresolved", err.getvalue())
+
+
+class TestAuthCheckWrapper(unittest.TestCase):
+    """The auth-check subcommand must report status without ever emitting the token."""
+
+    @mock.patch.object(rls_tool.subprocess, "run")
+    def test_authenticated_never_prints_token(self, run):
+        run.return_value = SimpleNamespace(returncode=0, stdout="t1.SECRET-TOKEN-VALUE", stderr="")
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertRaises(SystemExit) as ctx:
+            rls_tool.main(["auth-check"])
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertEqual(out.getvalue().strip(), "authenticated")
+        self.assertNotIn("SECRET-TOKEN-VALUE", out.getvalue())
+        # Output is captured, not inherited — the token can never reach the terminal.
+        _, kwargs = run.call_args
+        self.assertTrue(kwargs.get("capture_output"))
+        self.assertIsNotNone(kwargs.get("timeout"))
+
+    @mock.patch.object(rls_tool.subprocess, "run")
+    def test_not_authenticated_exits_1(self, run):
+        run.return_value = SimpleNamespace(returncode=1, stdout="", stderr="unauthenticated")
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertRaises(SystemExit) as ctx:
+            rls_tool.main(["auth-check"])
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(out.getvalue().strip(), "not_authenticated")
+
+    @mock.patch.object(rls_tool.subprocess, "run")
+    def test_blocked_check_reports_timeout(self, run):
+        run.side_effect = rls_tool.subprocess.TimeoutExpired(cmd="yc", timeout=15)
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertRaises(SystemExit) as ctx:
+            rls_tool.main(["auth-check", "--timeout", "1"])
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertEqual(out.getvalue().strip(), "timeout")
+
+    @mock.patch.object(rls_tool.subprocess, "run")
+    def test_missing_yc_reports_not_installed(self, run):
+        run.side_effect = FileNotFoundError()
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertRaises(SystemExit) as ctx:
+            rls_tool.main(["auth-check"])
+        self.assertEqual(ctx.exception.code, 3)
+        self.assertEqual(out.getvalue().strip(), "not_installed")
 
 
 if __name__ == "__main__":

@@ -35,6 +35,9 @@ USERID_NAME = "userid"
 # a bare login `ivan` is treated as `ivan@yandex.ru`, so it resolves only against
 # yandex.ru accounts, never federated ones. See references/id-formats.md.
 DEFAULT_DOMAIN = "yandex.ru"
+# When `convert` gets a single field's raw RLS text (no {field_guid: ...} wrapper), the output is
+# keyed by this placeholder for the caller to replace with the real dataset field guid.
+PLACEHOLDER_FIELD_GUID = "<field_guid>"
 
 
 class YcError(RuntimeError):
@@ -426,9 +429,22 @@ def cmd_convert(args):
             raw = handle.read()
     else:
         raw = sys.stdin.read()
-    rls_config = json.loads(raw)
-    if not isinstance(rls_config, dict):
-        sys.exit("convert expects a JSON object {field_guid: \"text config\"}.")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        rls_config = parsed
+    else:
+        # Not a {field_guid: text} object: treat the input as one field's legacy RLS text
+        # (commonly copied straight from a field's RLS settings). The guid is optional here —
+        # emit under a placeholder for the caller to substitute; it never affects resolution.
+        rls_config = {PLACEHOLDER_FIELD_GUID: parsed if isinstance(parsed, str) else raw}
+        print(
+            f"NOTE: input treated as one field's RLS text; output is keyed by "
+            f"{PLACEHOLDER_FIELD_GUID!r} — replace it with the real dataset field guid.",
+            file=sys.stderr,
+        )
     rls2 = convert_config(rls_config, resolver)
     print(json.dumps(rls2, ensure_ascii=False, indent=2))
     failed = [
@@ -439,6 +455,33 @@ def cmd_convert(args):
     ]
     if failed:
         print(f"WARNING: {len(failed)} unresolved subject(s): {sorted(set(failed))}", file=sys.stderr)
+
+
+def cmd_auth_check(args):
+    # Verify the yc session WITHOUT ever emitting the token: bakes in the redirect the auth step
+    # otherwise trusts the agent to add, and applies a timeout so a blocked check (waiting on an
+    # interactive hardware-key touch, or a sandbox withholding network) surfaces as `timeout`
+    # instead of hanging. Output is captured and never printed; only a status word is emitted.
+    try:
+        proc = subprocess.run(
+            ["yc", "iam", "create-token"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=args.timeout,
+            check=False,
+        )
+    except FileNotFoundError:
+        print("not_installed")
+        sys.exit(3)
+    except subprocess.TimeoutExpired:
+        print("timeout")
+        sys.exit(2)
+    if proc.returncode == 0:
+        print("authenticated")
+        sys.exit(0)
+    print("not_authenticated")
+    sys.exit(1)
 
 
 def build_parser():
@@ -455,8 +498,19 @@ def build_parser():
     resolve_parser.set_defaults(func=cmd_resolve)
 
     convert_parser = sub.add_parser("convert", parents=[common], help="Convert a legacy rls config to rls2.")
-    convert_parser.add_argument("--input", help="Path to a JSON file {field_guid: text} (default: stdin).")
+    convert_parser.add_argument(
+        "--input",
+        help="Path to the legacy rls: JSON {field_guid: text}, or one field's raw text (default: stdin).",
+    )
     convert_parser.set_defaults(func=cmd_convert)
+
+    authcheck_parser = sub.add_parser(
+        "auth-check", help="Report the yc session status without ever printing the token."
+    )
+    authcheck_parser.add_argument(
+        "--timeout", type=int, default=15, help="Seconds to wait before reporting 'timeout' (default: 15)."
+    )
+    authcheck_parser.set_defaults(func=cmd_auth_check)
 
     return parser
 

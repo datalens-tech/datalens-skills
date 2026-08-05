@@ -17,28 +17,50 @@ metadata:
 
 # DataLens
 
-[DataLens](https://datalens.tech) is a business intelligence and data visualization system: it
-connects to databases, models the data into datasets, and renders charts and dashboards on top of
-them. It is open source, offered as a managed service in Yandex Cloud, deployed on-premise, and run
-internally at Yandex.
+[DataLens](https://datalens.ru) is a business intelligence and data visualization system: it connects to databases, models the data into datasets, and renders charts and dashboards on top of them. It is offered as a managed service in Yandex Cloud, deployed on-premise, and run internally at Yandex.
 
-This file orients and routes. It does not teach any one interface — pick the interface below and
-follow the skill that owns it.
+This file orients and routes. It does not teach any one interface — pick the interface below and follow the skill that owns it.
 
-## Object model
+## Two structures, kept apart
 
-Everything is an entry in a hierarchy, and entries form a dependency chain:
+They are easy to conflate. One says how data reaches a picture; the other says where the entities
+are filed. An entity's place in one tells you nothing about its place in the other.
+
+### Data flow
 
 ```
-collection / workbook        ← where entries live
-    connection               ← credentials for a database
-      └── dataset            ← fields, calculations, joins, parameters, RLS
-            └── chart        ← wizard (dataset-backed) | QL (raw SQL) | editor (custom JS)
-                  └── dashboard   ← tabs, widgets, selectors, layout
+database → connection → source → dataset → chart → dashboard
 ```
 
-You build left to right, and reference by id. A chart needs a dataset (or, for QL, a connection); a
-dashboard references charts. Deleting upstream breaks downstream.
+- **connection** — credentials and driver for one database.
+- **source** — a table or a SQL query exposed by that connection.
+- **dataset** — the modelling layer: fields, calculated fields, joins, parameters, row-level
+  security.
+- **chart** — one visualization. *Wizard* charts sit on a dataset; *QL* charts skip the dataset and
+  query a connection directly; *editor* charts are custom JavaScript.
+- **dashboard** — tabs, widgets, selectors, and layout over charts.
+
+Build left to right and reference by id. Deleting upstream breaks everything downstream.
+
+### Object model — where entries live
+
+Connections, datasets, charts, and dashboards are *entries*, and entries live in a container tree.
+Two schemes exist and which one is available differs per installation:
+
+```
+newer    collection
+           ├── collection …            nested, arbitrarily deep
+           └── workbook
+                 └── entries           connection, dataset, chart, dashboard
+
+older    folder tree, path-addressed   e.g. Users/someone/reports
+           └── entries                 held directly, no workbook in between
+```
+
+The workbook is the unit of grouping and permissions in the newer scheme; the folder path plays
+that role in the older one. **Never assume which is available** — an installation may offer one,
+the other, or both, so establish it the way the interface skill tells you rather than writing
+path-based logic against a workbook-only deployment.
 
 ## Installations
 

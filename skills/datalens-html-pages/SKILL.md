@@ -118,6 +118,16 @@ See [references/authoring-constraints.md](references/authoring-constraints.md) f
 lists, and [assets/report.template.html](assets/report.template.html) for a compliant starting
 point.
 
+**Design** — before building a dashboard or report page, ask the user whether they want it styled
+per the DataLens design principles (unless they already said so). If they agree, follow
+[references/design-principles.md](references/design-principles.md) — layout grid, chart-type
+selection, colors, number formatting, and theming. It relies on the DataLens design tokens in
+[assets/dl-theme-tokens.css](assets/dl-theme-tokens.css) and base dashboard styles in
+[assets/dl-dashboard.css](assets/dl-dashboard.css) — inline both files' contents into the page's
+`<style>` (the page must be self-contained) and set `g-root g-root_theme_light|dark` on the root
+element per the `theme` query param. If the user declines, skip these three files and style the
+page however they ask; the sandbox and CSP rules above still apply.
+
 ## Validate before you upload
 
 Lint the page against the exact CSP allowlist and sandbox constraints — a clean run means nothing

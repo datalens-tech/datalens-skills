@@ -1,0 +1,22 @@
+.dashboard {
+    color: var(--g-color-text-primary);
+    font-family: var(--g-text-body-font-family);
+    font-size: var(--g-text-body-1-font-size);
+    font-weight: var(--g-text-body-font-weight);
+    line-height: var(--g-text-body-1-line-height);
+    padding: 0 16px 40px;
+    background-color: var(--dl-color-dashboard-background);
+}
+
+.dashboard-title {
+    padding: 8px 0 4px;
+    font-family: var(--g-text-header-font-family);
+    font-size: var(--g-text-header-2-font-size);
+    font-weight: 500;
+    line-height: var(--g-text-header-2-line-height);
+}
+
+.dashboard-widget {
+    border-radius: 12px;
+    background: var(--dl-color-widget-background);
+}

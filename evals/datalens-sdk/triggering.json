@@ -1,0 +1,82 @@
+[
+  {
+    "query": "построй дашборд по датасету sales через python — три чарта и селектор по региону",
+    "should_trigger": true
+  },
+  {
+    "query": "напиши скрипт, который экспортирует датасет и заливает его копию в другой воркбук",
+    "should_trigger": true
+  },
+  {
+    "query": "create a wizard chart on dataset_id 9f3c1e from python and put it on an existing dashboard",
+    "should_trigger": true
+  },
+  {
+    "query": "скрипт падает с DatalensAPIError 409 ENTRY_ALREADY_EXISTS при повторном запуске. как правильно?",
+    "should_trigger": true
+  },
+  {
+    "query": "как добавить в датасет вычисляемое поле из кода, не через интерфейс?",
+    "should_trigger": true
+  },
+  {
+    "query": "automate this: create a clickhouse connection, build a dataset on two joined tables, chart it",
+    "should_trigger": true
+  },
+  {
+    "query": "нужно в ci пересоздавать дашборды из yaml-конфига. набросай питон",
+    "should_trigger": true
+  },
+  {
+    "query": "how do I list every chart inside a workbook and find the ones nobody opened?",
+    "should_trigger": true
+  },
+  {
+    "query": "поменяй заголовок и палитру у чарта chart_id=a12f, только не пересоздавай его — на него ссылается дашборд",
+    "should_trigger": true
+  },
+  {
+    "query": "у нас куча ручных requests.post к datalens api, хотим переехать на нормальный клиент",
+    "should_trigger": true
+  },
+  {
+    "query": "что такое датасет в даталенсе и зачем он нужен, если есть коннекшен?",
+    "should_trigger": false
+  },
+  {
+    "query": "какие инсталляции есть у datalens и чем отличаются облако и онпрем?",
+    "should_trigger": false
+  },
+  {
+    "query": "чем автоматизировать даталенс — sdk или mcp-сервер? что лучше подойдёт",
+    "should_trigger": false
+  },
+  {
+    "query": "html-отчёт в даталенсе не грузит шрифты, консоль ругается на csp. что не так",
+    "should_trigger": false
+  },
+  {
+    "query": "сгенерируй html страницу с графиком и кнопкой экспорта, чтобы рендерилась в даталенсе",
+    "should_trigger": false
+  },
+  {
+    "query": "почему в дашборде продажи за март выглядят подозрительно низкими?",
+    "should_trigger": false
+  },
+  {
+    "query": "напиши python скрипт, который читает csv и рисует график в matplotlib",
+    "should_trigger": false
+  },
+  {
+    "query": "как в python сделать http-клиент с ретраями и экспоненциальным бэкоффом?",
+    "should_trigger": false
+  },
+  {
+    "query": "поставь мне пакет для внутренней ятимной инсталляции даталенса, публичный не подходит",
+    "should_trigger": false
+  },
+  {
+    "query": "нужен скрипт, который выгружает данные из clickhouse в parquet, даталенс не при чём",
+    "should_trigger": false
+  }
+]

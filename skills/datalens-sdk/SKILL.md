@@ -34,12 +34,16 @@ path and run its bootstrap script **from the user's project directory**:
 bash "/absolute/path/to/datalens-sdk/scripts/bootstrap.sh"
 ```
 
-The script may create `./.venv`, contact the configured Python package index, and install
-`datalens-sdk` into that project-local environment. It deliberately does not encode an SDK version
-or a Python compatibility range. Instead, it lets pip select the newest stable SDK release
-compatible with each candidate interpreter and reads `Requires-Python` diagnostics when an
-interpreter is rejected. It upgrades pip only inside disposable probe environments, never inside
-an existing project environment.
+The script first reuses `./.venv`, then a uv- or Poetry-managed project environment when its
+project markers are present, and creates `./.venv` only when none exists. It verifies that every
+selected `bin/python` identifies itself as belonging to that virtual environment before invoking
+pip, so a stale symlink can never install into system Python. It may contact the configured Python
+package index and install `datalens-sdk` into the selected environment.
+
+The script deliberately does not encode an SDK version or a Python compatibility range. Instead,
+it lets pip select the newest stable SDK release compatible with each candidate interpreter and
+reads `Requires-Python` diagnostics when an interpreter is rejected. It upgrades pip only inside
+verified disposable probe environments, never inside an existing project environment.
 
 Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
 
@@ -69,7 +73,10 @@ Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
     upgrade command only if the user requests it.
 - `STATUS=blocked` — relay `REASON` and the relevant non-secret fields. Do not improvise another
   install command. When `AVAILABLE_PYTHON` is present, an existing incompatible `./.venv` was
-  preserved and the user must decide how to handle it.
+  preserved and the user must decide how to handle it. For `venv_invalid`, do not use or repair the
+  interpreter path automatically. For `managed_environment_unavailable` or
+  `managed_environment_invalid`, preserve the uv/Poetry project and ask the user to repair or
+  select its managed environment; never create a parallel `.venv`.
 
 For any unrecognized `decision_required` reason, stop and show the parsed fields instead of
 guessing. A decision applies only to this session; do not write an opt-out marker.

@@ -5,6 +5,7 @@ set -eu
 TEST_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 BOOTSTRAP_SCRIPT="${TEST_ROOT}/skills/datalens-sdk/scripts/bootstrap.sh"
 TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/datalens-bootstrap-tests.XXXXXX")"
+TEST_SYSTEM_PYTHON="$(command -v python3)"
 TESTS_RUN=0
 
 cleanup() {
@@ -49,6 +50,7 @@ make_python() {
     local venv_mode="${8:-success}"
     local installed_sdk_version="${9:-$sdk_version}"
     local version_relation="${10:-newer}"
+    local env_identity="${11:-valid}"
 
     mkdir -p "$(dirname "$python_path")"
     cp "${TEST_ROOT}/tests/datalens-sdk/fixtures/mock_python.sh" "$python_path"
@@ -62,6 +64,7 @@ make_python() {
         printf 'MOCK_VENV_MODE=%q\n' "$venv_mode"
         printf 'MOCK_INSTALLED_SDK_VERSION=%q\n' "$installed_sdk_version"
         printf 'MOCK_VERSION_RELATION=%q\n' "$version_relation"
+        printf 'MOCK_ENV_IDENTITY=%q\n' "$env_identity"
     } >"${python_path}.config"
     if [ "$installed" = "yes" ]; then
         printf '%s\n' "$installed_sdk_version" >"${python_path}.sdk-installed"
@@ -86,6 +89,31 @@ EOF
     chmod +x "$pyenv_path"
 }
 
+make_uv() {
+    local uv_path="$1"
+    cat >"$uv_path" <<'EOF'
+#!/bin/bash
+[ "${1:-}" = "run" ] || exit 1
+[ "${2:-}" = "--no-sync" ] || exit 1
+[ "${3:-}" = "python" ] || exit 1
+shift 3
+exec "${MOCK_UV_PYTHON:?}" "$@"
+EOF
+    chmod +x "$uv_path"
+}
+
+make_poetry() {
+    local poetry_path="$1"
+    cat >"$poetry_path" <<'EOF'
+#!/bin/bash
+[ "${1:-}" = "run" ] || exit 1
+[ "${2:-}" = "python" ] || exit 1
+shift 2
+exec "${MOCK_POETRY_PYTHON:?}" "$@"
+EOF
+    chmod +x "$poetry_path"
+}
+
 new_case() {
     local name="$1"
     CASE_DIR="${TEST_TMP}/${name}"
@@ -96,12 +124,94 @@ new_case() {
     CASE_STDERR="${CASE_DIR}/stderr"
     mkdir -p "$CASE_PROJECT" "$CASE_TMP"
     make_tools "$CASE_TOOLS"
-    unset MOCK_PYENV_VERSION MOCK_PYENV_PREFIX || true
+    unset MOCK_PYENV_VERSION MOCK_PYENV_PREFIX MOCK_UV_PYTHON MOCK_POETRY_PYTHON || true
 }
 
 run_bootstrap() {
     CASE_OUTPUT="$(cd "$CASE_PROJECT" && PATH="$CASE_PATH" TMPDIR="$CASE_TMP" /bin/bash "$BOOTSTRAP_SCRIPT" "$@" 2>"$CASE_STDERR")"
     CASE_ERROR_OUTPUT="$(<"$CASE_STDERR")"
+}
+
+test_stale_project_python_symlink_is_rejected() {
+    new_case stale-project-python
+    mkdir -p "$CASE_PROJECT/.venv/bin"
+    ln -s "$TEST_SYSTEM_PYTHON" "$CASE_PROJECT/.venv/bin/python"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "VENV=failed"
+    assert_contains "$CASE_OUTPUT" "SDK=missing"
+    assert_contains "$CASE_OUTPUT" "REASON=venv_invalid"
+    assert_contains "$CASE_OUTPUT" "STATUS=blocked"
+    assert_not_contains "$CASE_ERROR_OUTPUT" "Installing datalens-sdk"
+    assert_not_contains "$CASE_ERROR_OUTPUT" "Upgrading datalens-sdk"
+}
+
+test_environment_identity_is_rechecked_before_project_pip() {
+    new_case identity-changed
+    make_python "$CASE_PROJECT/.venv/bin/python" "7.4.2" success "9.8.7" success ">=3" no success "9.8.7" newer valid_once
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "VENV=failed"
+    assert_contains "$CASE_OUTPUT" "SDK=missing"
+    assert_contains "$CASE_OUTPUT" "REASON=venv_invalid"
+    assert_contains "$CASE_OUTPUT" "STATUS=blocked"
+    assert_not_contains "$CASE_ERROR_OUTPUT" "Installing datalens-sdk"
+    [ ! -e "$CASE_PROJECT/.venv/bin/python.sdk-installed" ] || fail "identity change reached project pip"
+}
+
+test_uv_managed_environment_is_reused() {
+    new_case uv-managed
+    touch "$CASE_PROJECT/uv.lock"
+    MOCK_UV_PYTHON="${CASE_DIR}/uv-cache/bin/python"
+    export MOCK_UV_PYTHON
+    make_python "$MOCK_UV_PYTHON" "7.4.2" success "9.8.7" success ">=3" yes
+    make_uv "$CASE_TOOLS/uv"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "VENV=reused"
+    assert_contains "$CASE_OUTPUT" "PYTHON=$MOCK_UV_PYTHON"
+    assert_contains "$CASE_OUTPUT" "PYTHON_SOURCE=uv"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    [ ! -e "$CASE_PROJECT/.venv" ] || fail "bootstrap replaced uv environment with .venv"
+}
+
+test_poetry_managed_environment_is_reused() {
+    new_case poetry-managed
+    touch "$CASE_PROJECT/poetry.lock"
+    MOCK_POETRY_PYTHON="${CASE_DIR}/poetry-cache/bin/python"
+    export MOCK_POETRY_PYTHON
+    make_python "$MOCK_POETRY_PYTHON" "7.4.2" success "9.8.7" success ">=3" yes
+    make_poetry "$CASE_TOOLS/poetry"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "VENV=reused"
+    assert_contains "$CASE_OUTPUT" "PYTHON=$MOCK_POETRY_PYTHON"
+    assert_contains "$CASE_OUTPUT" "PYTHON_SOURCE=poetry"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    [ ! -e "$CASE_PROJECT/.venv" ] || fail "bootstrap replaced Poetry environment with .venv"
+}
+
+test_managed_project_without_tool_is_preserved() {
+    new_case managed-tool-missing
+    touch "$CASE_PROJECT/uv.lock"
+    make_python "$CASE_TOOLS/python3" "7.4.2" success "9.8.7"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "PYTHON_SOURCE=uv"
+    assert_contains "$CASE_OUTPUT" "REASON=managed_environment_unavailable"
+    assert_contains "$CASE_OUTPUT" "STATUS=blocked"
+    [ ! -e "$CASE_PROJECT/.venv" ] || fail "bootstrap created .venv for an unresolved managed project"
+}
+
+test_invalid_managed_environment_is_preserved() {
+    new_case managed-env-invalid
+    touch "$CASE_PROJECT/poetry.lock"
+    MOCK_POETRY_PYTHON="${CASE_DIR}/poetry-cache/bin/python"
+    export MOCK_POETRY_PYTHON
+    make_python "$MOCK_POETRY_PYTHON" "7.4.2" success "9.8.7" success ">=3" yes success "9.8.7" newer invalid
+    make_poetry "$CASE_TOOLS/poetry"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "PYTHON_SOURCE=poetry"
+    assert_contains "$CASE_OUTPUT" "REASON=managed_environment_invalid"
+    assert_contains "$CASE_OUTPUT" "STATUS=blocked"
+    [ ! -e "$CASE_PROJECT/.venv" ] || fail "bootstrap replaced an invalid managed environment"
 }
 
 test_existing_current_sdk_is_reused_after_check() {
@@ -385,6 +495,9 @@ test_skill_documents_consent_protocol() {
         'REASON=sdk_version_check_failed' \
         'REASON=sdk_upgrade_failed' \
         'REASON=sdk_upgrade_target_unavailable' \
+        'managed_environment_unavailable' \
+        'managed_environment_invalid' \
+        'venv_invalid' \
         'CHANGELOG_URL' \
         '--upgrade-sdk "$AVAILABLE_SDK_VERSION"'
     do
@@ -393,6 +506,12 @@ test_skill_documents_consent_protocol() {
 }
 
 for test_name in \
+    test_stale_project_python_symlink_is_rejected \
+    test_environment_identity_is_rechecked_before_project_pip \
+    test_uv_managed_environment_is_reused \
+    test_poetry_managed_environment_is_reused \
+    test_managed_project_without_tool_is_preserved \
+    test_invalid_managed_environment_is_preserved \
     test_existing_current_sdk_is_reused_after_check \
     test_existing_older_sdk_requires_decision_without_mutation \
     test_approved_upgrade_installs_exact_reported_version \

@@ -2,7 +2,9 @@
 # Bootstrap datalens-sdk without encoding SDK or Python compatibility versions.
 #
 # Run from the user's project directory. The script:
-#   * checks a working SDK from ./.venv against the newest compatible release;
+#   * reuses ./.venv or a uv/Poetry-managed project environment;
+#   * verifies environment identity before every pip invocation;
+#   * checks a working SDK against the newest compatible release;
 #   * asks its caller to obtain consent before upgrading an installed SDK;
 #   * otherwise lets pip resolve an unpinned datalens-sdk in disposable probes;
 #   * changes interpreter only after pip reports Requires-Python incompatibility;
@@ -15,7 +17,8 @@
 set -u
 
 BOOTSTRAP_CWD="$(pwd -P)"
-BOOTSTRAP_VENV="${BOOTSTRAP_CWD}/.venv"
+BOOTSTRAP_PROJECT_VENV="${BOOTSTRAP_CWD}/.venv"
+BOOTSTRAP_VENV="$BOOTSTRAP_PROJECT_VENV"
 BOOTSTRAP_TMP_ROOT=""
 
 BOOTSTRAP_VENV_STATE="failed"
@@ -41,6 +44,8 @@ PROBE_REQUIREMENTS=""
 PROBE_REASON=""
 VERSION_RELATION=""
 INSTALLED_AVAILABLE_RELATION=""
+MANAGED_RESULT="none"
+MANAGED_SOURCE=""
 
 CANDIDATE_PATH=""
 CANDIDATE_VERSION=""
@@ -91,6 +96,86 @@ bootstrap_python_info() {
     CANDIDATE_SCORE="${info%%|*}"
     CANDIDATE_CANONICAL="${info#*|}"
     [ -n "$CANDIDATE_VERSION" ] && [ -n "$CANDIDATE_SCORE" ] && [ -n "$CANDIDATE_CANONICAL" ]
+}
+
+bootstrap_environment_identity() {
+    # A path named bin/python is not enough: it may be a stale symlink to a
+    # system or version-manager interpreter. Require Python itself to report
+    # the selected environment as sys.prefix and to identify it as a venv.
+    local python_path="$1"
+    local expected_prefix="$2"
+    "$python_path" -c '
+import os
+import sys
+
+expected = os.path.realpath(sys.argv[1])
+prefix = os.path.realpath(sys.prefix)
+base_prefix = os.path.realpath(getattr(sys, "base_prefix", sys.prefix))
+is_virtualenv = prefix != base_prefix or hasattr(sys, "real_prefix")
+raise SystemExit(0 if is_virtualenv and prefix == expected else 1)
+' "$expected_prefix" >/dev/null 2>&1
+}
+
+bootstrap_managed_python_info() {
+    local source="$1"
+    local info=""
+    local log="${BOOTSTRAP_TMP_ROOT}/${source}-environment.log"
+    local python_code='import sys; print(f"{sys.executable}|{sys.prefix}")'
+
+    case "$source" in
+        uv)
+            info="$(uv run --no-sync python -c "$python_code" 2>"$log")" || return 1
+            ;;
+        poetry)
+            info="$(poetry run python -c "$python_code" 2>"$log")" || return 1
+            ;;
+        *) return 1 ;;
+    esac
+    case "$info" in
+        *'|'*) : ;;
+        *) return 1 ;;
+    esac
+    BOOTSTRAP_PYTHON="${info%%|*}"
+    BOOTSTRAP_VENV="${info#*|}"
+    [ -x "$BOOTSTRAP_PYTHON" ] && [ -d "$BOOTSTRAP_VENV" ] || return 1
+    bootstrap_environment_identity "$BOOTSTRAP_PYTHON" "$BOOTSTRAP_VENV"
+}
+
+bootstrap_find_managed_environment() {
+    local has_uv_project="no"
+    local has_poetry_project="no"
+
+    MANAGED_RESULT="none"
+    MANAGED_SOURCE=""
+    if [ -f "${BOOTSTRAP_CWD}/uv.lock" ] || [ -f "${BOOTSTRAP_CWD}/uv.toml" ] \
+        || [ -n "${UV_PROJECT_ENVIRONMENT:-}" ] \
+        || { [ -f "${BOOTSTRAP_CWD}/pyproject.toml" ] \
+            && grep -Eq '^[[:space:]]*\[tool\.uv' "${BOOTSTRAP_CWD}/pyproject.toml"; }; then
+        has_uv_project="yes"
+    fi
+    if [ -f "${BOOTSTRAP_CWD}/poetry.lock" ] \
+        || { [ -f "${BOOTSTRAP_CWD}/pyproject.toml" ] \
+            && grep -Eq '^[[:space:]]*\[tool\.poetry' "${BOOTSTRAP_CWD}/pyproject.toml"; }; then
+        has_poetry_project="yes"
+    fi
+
+    if [ "$has_uv_project" = "yes" ]; then
+        MANAGED_SOURCE="uv"
+    elif [ "$has_poetry_project" = "yes" ]; then
+        MANAGED_SOURCE="poetry"
+    else
+        return 0
+    fi
+
+    if ! command -v "$MANAGED_SOURCE" >/dev/null 2>&1; then
+        MANAGED_RESULT="unavailable"
+        return 0
+    fi
+    if bootstrap_managed_python_info "$MANAGED_SOURCE"; then
+        MANAGED_RESULT="found"
+    else
+        MANAGED_RESULT="invalid"
+    fi
 }
 
 bootstrap_sdk_version() {
@@ -186,6 +271,11 @@ bootstrap_probe() {
         return 0
     fi
     PROBE_PYTHON="$probe_python"
+    if ! bootstrap_environment_identity "$PROBE_PYTHON" "${probe_dir}/venv"; then
+        PROBE_RESULT="failed"
+        PROBE_REASON="probe_venv_invalid"
+        return 0
+    fi
 
     upgrade_log="${probe_dir}/pip-upgrade.log"
     if ! "$probe_python" -m pip install --disable-pip-version-check --no-input --upgrade pip >"$upgrade_log" 2>&1; then
@@ -311,6 +401,10 @@ bootstrap_install_project() {
         requirement="datalens-sdk==${target_version}"
         action="Upgrading"
     fi
+    if ! bootstrap_environment_identity "$project_python" "$BOOTSTRAP_VENV"; then
+        BOOTSTRAP_REASON="venv_invalid"
+        return 2
+    fi
     bootstrap_note "${action} datalens-sdk into ${BOOTSTRAP_VENV}..."
     if "$project_python" -m pip install --disable-pip-version-check --no-input --upgrade "$requirement" >"$install_log" 2>&1; then
         BOOTSTRAP_SDK_VERSION="$(bootstrap_sdk_version "$project_python")"
@@ -353,14 +447,43 @@ BOOTSTRAP_TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/datalens-sdk-bootstrap.XXXXXX")
     exit 0
 }
 
+if [ ! -d "$BOOTSTRAP_PROJECT_VENV" ]; then
+    bootstrap_find_managed_environment
+    case "$MANAGED_RESULT" in
+        found)
+            BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
+            ;;
+        unavailable)
+            BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
+            BOOTSTRAP_REASON="managed_environment_unavailable"
+            bootstrap_emit
+            exit 0
+            ;;
+        invalid)
+            BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
+            BOOTSTRAP_REASON="managed_environment_invalid"
+            bootstrap_emit
+            exit 0
+            ;;
+    esac
+fi
+
 # Reuse a valid project environment only after checking whether the configured
 # package index offers a newer stable release compatible with its interpreter.
 if [ -d "$BOOTSTRAP_VENV" ]; then
-    if [ -x "${BOOTSTRAP_VENV}/bin/python" ]; then
-        BOOTSTRAP_PYTHON="${BOOTSTRAP_VENV}/bin/python"
-    elif [ -x "${BOOTSTRAP_VENV}/bin/python3" ]; then
-        BOOTSTRAP_PYTHON="${BOOTSTRAP_VENV}/bin/python3"
-    else
+    if [ -z "$BOOTSTRAP_PYTHON" ]; then
+        if [ -x "${BOOTSTRAP_VENV}/bin/python" ]; then
+            BOOTSTRAP_PYTHON="${BOOTSTRAP_VENV}/bin/python"
+        elif [ -x "${BOOTSTRAP_VENV}/bin/python3" ]; then
+            BOOTSTRAP_PYTHON="${BOOTSTRAP_VENV}/bin/python3"
+        else
+            BOOTSTRAP_VENV_STATE="failed"
+            BOOTSTRAP_REASON="venv_invalid"
+            bootstrap_emit
+            exit 0
+        fi
+    fi
+    if ! bootstrap_environment_identity "$BOOTSTRAP_PYTHON" "$BOOTSTRAP_VENV"; then
         BOOTSTRAP_VENV_STATE="failed"
         BOOTSTRAP_REASON="venv_invalid"
         bootstrap_emit
@@ -373,7 +496,7 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
         exit 0
     fi
     BOOTSTRAP_PYTHON_VERSION="$CANDIDATE_VERSION"
-    BOOTSTRAP_PYTHON_SOURCE="venv"
+    [ -n "$BOOTSTRAP_PYTHON_SOURCE" ] || BOOTSTRAP_PYTHON_SOURCE="venv"
     BOOTSTRAP_SDK_VERSION="$(bootstrap_sdk_version "$BOOTSTRAP_PYTHON")"
     if [ -n "$BOOTSTRAP_SDK_VERSION" ]; then
         BOOTSTRAP_VENV_STATE="reused"
@@ -430,6 +553,14 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
                     exit 0
                 fi
 
+                if [ "$BOOTSTRAP_REASON" = "venv_invalid" ]; then
+                    BOOTSTRAP_VENV_STATE="failed"
+                    BOOTSTRAP_SDK="missing"
+                    BOOTSTRAP_STATUS="blocked"
+                    bootstrap_emit
+                    exit 0
+                fi
+
                 BOOTSTRAP_SDK_VERSION="$(bootstrap_sdk_version "$BOOTSTRAP_PYTHON")"
                 if [ -n "$BOOTSTRAP_SDK_VERSION" ]; then
                     bootstrap_emit_version_decision "sdk_upgrade_failed"
@@ -462,7 +593,7 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
                 BOOTSTRAP_STATUS="ready"
             else
                 BOOTSTRAP_VENV_STATE="failed"
-                BOOTSTRAP_REASON="package_install_failed"
+                [ -n "$BOOTSTRAP_REASON" ] || BOOTSTRAP_REASON="package_install_failed"
             fi
             bootstrap_emit
             exit 0
@@ -542,11 +673,19 @@ if ! "$CANDIDATE_PATH" -m venv "$BOOTSTRAP_VENV" >/dev/null 2>&1; then
 fi
 BOOTSTRAP_PYTHON="${BOOTSTRAP_VENV}/bin/python"
 [ -x "$BOOTSTRAP_PYTHON" ] || BOOTSTRAP_PYTHON="${BOOTSTRAP_VENV}/bin/python3"
-if [ ! -x "$BOOTSTRAP_PYTHON" ] || ! bootstrap_install_project "$BOOTSTRAP_PYTHON"; then
+PROJECT_INSTALL_REASON=""
+if [ ! -x "$BOOTSTRAP_PYTHON" ]; then
+    PROJECT_INSTALL_REASON="venv_invalid"
+elif ! bootstrap_environment_identity "$BOOTSTRAP_PYTHON" "$BOOTSTRAP_VENV"; then
+    PROJECT_INSTALL_REASON="venv_invalid"
+elif ! bootstrap_install_project "$BOOTSTRAP_PYTHON"; then
+    PROJECT_INSTALL_REASON="${BOOTSTRAP_REASON:-package_install_failed}"
+fi
+if [ -n "$PROJECT_INSTALL_REASON" ]; then
     rm -rf -- "$BOOTSTRAP_VENV"
     BOOTSTRAP_PYTHON=""
     BOOTSTRAP_VENV_STATE="failed"
-    BOOTSTRAP_REASON="package_install_failed"
+    BOOTSTRAP_REASON="$PROJECT_INSTALL_REASON"
     bootstrap_emit
     exit 0
 fi

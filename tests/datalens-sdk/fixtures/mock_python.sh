@@ -9,6 +9,26 @@ MOCK_CONFIG="${0}.config"
 if [ "${1:-}" = "-c" ]; then
     MOCK_CODE="${2:-}"
     case "$MOCK_CODE" in
+        *'expected = os.path.realpath'*'is_virtualenv'*)
+            case "$MOCK_ENV_IDENTITY" in
+                valid) : ;;
+                valid_once)
+                    [ ! -e "${0}.identity-checked" ] || exit 1
+                    touch "${0}.identity-checked"
+                    ;;
+                *) exit 1 ;;
+            esac
+            MOCK_BIN_DIR="${0%/*}"
+            MOCK_PREFIX="${MOCK_BIN_DIR%/*}"
+            [ "$MOCK_PREFIX" = "${3:-}" ]
+            exit $?
+            ;;
+        *'sys.executable'*'sys.prefix'*)
+            MOCK_BIN_DIR="${0%/*}"
+            MOCK_PREFIX="${MOCK_BIN_DIR%/*}"
+            printf '%s|%s\n' "$0" "$MOCK_PREFIX"
+            exit 0
+            ;;
         *'sys.version_info'*'os.path.realpath'*)
             OLD_IFS="$IFS"
             IFS='.'

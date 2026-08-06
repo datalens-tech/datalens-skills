@@ -66,14 +66,19 @@ all differ. Establish it before writing anything that talks to an API.
 | Installation | UI | API host | Auth |
 |---|---|---|---|
 | **Yandex Cloud** | `datalens.ru` | `api.datalens.tech` | `yc` CLI IAM token, plus an organization id |
-| **On-premise** | the deployment's own host | the same deployment | deployment-specific; commonly an OAuth token in the environment |
+| **On-premise** | ask the user | ask the user | deployment-specific; commonly an OAuth token in the environment |
 | **Yandex Team** (internal) | `datalens.yandex-team.ru` | `api.datalens.yandex.net` | internal |
 
 **Yandex Cloud** is the managed service. **On-premise** covers both the open-source self-host
-(`docker compose`, UI on `:8080`) and the commercial enterprise build; it has no fixed host, so a
-base URL is always required and nothing about endpoints can be assumed. **Yandex Team** is the
+(`docker compose`, UI on `:8080`) and the commercial enterprise build. **Yandex Team** is the
 internal Yandex installation — see *Installation overlays* below before answering anything specific
 to it.
+
+If the task concerns an on-premise installation, neither of its endpoints is discoverable and the
+API does not necessarily sit on the UI's host. Stop and ask the user for both — the DataLens
+endpoint and the DataLens API endpoint — before writing anything that talks to either. Do not
+derive one from the other, do not fall back to a cloud default, and do not carry on with a
+placeholder.
 
 Tool-specific skills detect the installation for you — the SDK, for instance, ships a preflight
 that reports it. Do not hand-roll detection.
@@ -94,10 +99,12 @@ startup and exposes a three-tool gateway (`list_commands` → `describe_commands
 `invoke_command`) instead of hundreds of tools. Do not mix them for one task.
 
 **The HTTP API, when neither fits.** The SDK and the MCP server are both built on it, so reach for
-it directly only where they fall short. It is self-describing: fetch the OpenAPI spec from `/json/`
-on the installation's API host — `https://api.datalens.tech/json/` on the cloud — and work from the
-spec rather than guessing endpoint names or payload shapes. On the cloud the organization id is
-required, sent as an `x-dl-org-id` header.
+it directly only where they fall short. It is an HTTP API in an RPC style rather than a REST one:
+you call named commands with JSON payloads, not resources. It is also self-describing — fetch the
+OpenAPI spec from `/json/` on the installation's API host (*Installations* above;
+`https://api.datalens.tech/json/` on the cloud) and work from the spec rather than guessing command
+names or payload shapes. On the cloud the organization id is required, sent as an `x-dl-org-id`
+header.
 
 ## Installation overlays
 

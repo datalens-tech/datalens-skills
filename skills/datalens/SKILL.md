@@ -71,14 +71,8 @@ all differ. Establish it before writing anything that talks to an API.
 
 **Yandex Cloud** is the managed service. **On-premise** covers both the open-source self-host
 (`docker compose`, UI on `:8080`) and the commercial enterprise build. **Yandex Team** is the
-internal Yandex installation — see *Installation overlays* below before answering anything specific
-to it.
-
-If the task concerns an on-premise installation, neither of its endpoints is discoverable and the
-API does not necessarily sit on the UI's host. Stop and ask the user for both — the DataLens
-endpoint and the DataLens API endpoint — before writing anything that talks to either. Do not
-derive one from the other, do not fall back to a cloud default, and do not carry on with a
-placeholder.
+internal Yandex installation — see *Installation-specific detail* below before answering anything
+specific to it.
 
 Tool-specific skills detect the installation for you — the SDK, for instance, ships a preflight
 that reports it. Do not hand-roll detection.
@@ -106,17 +100,23 @@ OpenAPI spec from `/json/` on the installation's API host (*Installations* above
 names or payload shapes. On the cloud the organization id is required, sent as an `x-dl-org-id`
 header.
 
-## Installation overlays
+## Installation-specific detail
 
-Installation-specific detail may be extended by a skill distributed separately — for Yandex Team,
-`datalens-yateam`. If it is present in the available skills list and the environment targets that
-installation, invoke it: it adds and overrides installation-specific detail from this file, and it
-wins where the two disagree.
+Two installations withhold something you need, and in both cases the answer is to ask rather than
+to fill the gap yourself.
 
-If the task concerns Yandex Team and `datalens-yateam` is *not* in the list, stop and ask the user
-to install it, following the instructions at <https://datalens.yandex-team.ru/get-skills>. Do not
-reconstruct its content in the meantime — say which part of the answer is installation-dependent
-and leave it there.
+**Yandex Team** is extended by a skill distributed separately, `datalens-yateam`. If it is present
+in the available skills list and the environment targets that installation, invoke it: it adds and
+overrides installation-specific detail from this file, and it wins where the two disagree. If the
+task concerns Yandex Team and the skill is *not* in the list, stop and ask the user to install it,
+following the instructions at <https://datalens.yandex-team.ru/get-skills>. Do not reconstruct its
+content in the meantime — say which part of the answer is installation-dependent and leave it
+there.
+
+**On-premise** publishes no endpoints, and the API does not necessarily sit on the UI's host. Stop
+and ask the user for both — the DataLens endpoint and the DataLens API endpoint — before writing
+anything that talks to either. Do not derive one from the other, do not fall back to a cloud
+default, and do not carry on with a placeholder.
 
 ## Out of scope
 

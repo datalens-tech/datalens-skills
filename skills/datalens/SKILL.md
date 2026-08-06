@@ -84,7 +84,7 @@ that reports it. Do not hand-roll detection.
 |---|---|---|
 | Manage entities from Python — create, update, inspect, export, clone | **Python SDK** (`datalens-sdk` on PyPI) | `datalens-sdk` |
 | Let an agent call the DataLens API directly through tools | **MCP server** ([`@datalens-tech/mcp`](https://github.com/datalens-tech/datalens-mcp)) | — see its README |
-| Anything else programmatic | the public HTTP API | — |
+| Anything else programmatic | the public HTTP API | — see below |
 | Explore, click around, look at a rendered chart | the web UI | — human work, not agent work |
 
 **SDK vs MCP.** The SDK is the default for anything scripted, repeatable, or committed to a
@@ -93,8 +93,11 @@ server suits interactive one-offs inside an agent session: it fetches the API's 
 startup and exposes a three-tool gateway (`list_commands` → `describe_commands` →
 `invoke_command`) instead of hundreds of tools. Do not mix them for one task.
 
-**Neither, for raw HTTP.** If a skill covers the interface, use it rather than hand-building
-requests against the API.
+**The HTTP API, when neither fits.** The SDK and the MCP server are both built on it, so reach for
+it directly only where they fall short. It is self-describing: fetch the OpenAPI spec from `/json/`
+on the installation's API host — `https://api.datalens.tech/json/` on the cloud — and work from the
+spec rather than guessing endpoint names or payload shapes. On the cloud the organization id is
+required, sent as an `x-dl-org-id` header.
 
 ## Installation overlays
 

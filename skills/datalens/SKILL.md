@@ -21,12 +21,7 @@ metadata:
 
 This file orients and routes. It does not teach any one interface — pick the interface below and follow the skill that owns it.
 
-## Two structures, kept apart
-
-They are easy to conflate. One says how data reaches a picture; the other says where the entities
-are filed. An entity's place in one tells you nothing about its place in the other.
-
-### Data flow
+## Data flow
 
 ```
 database → connection → source → dataset → chart → dashboard
@@ -42,10 +37,11 @@ database → connection → source → dataset → chart → dashboard
 
 Build left to right and reference by id. Deleting upstream breaks everything downstream.
 
-### Object model — where entries live
+## Object model
 
-Connections, datasets, charts, and dashboards are *entries*, and entries live in a container tree.
-Two schemes exist and which one is available differs per installation:
+Where entries are filed — a separate axis from the flow above. Connections, datasets, charts, and
+dashboards are all *entries*, and entries live in a container tree. Two schemes exist, and which
+one is available differs per installation:
 
 ```
 newer    collection

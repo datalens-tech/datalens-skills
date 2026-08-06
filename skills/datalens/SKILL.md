@@ -4,7 +4,7 @@ description: >-
   Start here for Yandex DataLens when the task has not yet settled on a tool, or when the question
   is about DataLens itself rather than about carrying something out in it: what DataLens is and
   what it can do; which installation is in play — Yandex Cloud, on-premise, or the internal Yandex
-  one — and how they differ in auth, endpoints, and capabilities; what a collection, workbook,
+  Team one — and how they differ in hosts, auth, and capabilities; what a collection, workbook,
   connection, dataset, chart, or dashboard is and how they relate; and whether to reach for the MCP
   server, the Python SDK, the HTTP API, or the web UI. Use it to orient and to route to the skill
   that does the work. NOT for doing the work once the approach is chosen — that is `datalens-sdk`
@@ -60,14 +60,20 @@ path-based logic against a workbook-only deployment.
 
 ## Installations
 
-**Never assume which one is in play** — auth, endpoints, and available connectors and chart types
+**Never assume which one is in play** — hosts, auth, and the available connectors and chart types
 all differ. Establish it before writing anything that talks to an API.
 
-| Installation | Where | Auth | Notes |
+| Installation | UI | API host | Auth |
 |---|---|---|---|
-| **Yandex Cloud** | `datalens.yandex.com` / `.ru` | `yc` CLI IAM token, plus an organization id | The managed service |
-| **On-premise** | a customer's own base URL | deployment-specific; commonly an OAuth token in the environment | Open-source self-host (`docker compose`, UI on `:8080`) and the commercial enterprise build both live here |
-| **Internal Yandex** | internal host | internal | See *Installation overlays* below |
+| **Yandex Cloud** | `datalens.ru` | `api.datalens.tech` | `yc` CLI IAM token, plus an organization id |
+| **On-premise** | the deployment's own host | the same deployment | deployment-specific; commonly an OAuth token in the environment |
+| **Yandex Team** (internal) | `datalens.yandex-team.ru` | `api.datalens.yandex.net` | internal |
+
+**Yandex Cloud** is the managed service. **On-premise** covers both the open-source self-host
+(`docker compose`, UI on `:8080`) and the commercial enterprise build; it has no fixed host, so a
+base URL is always required and nothing about endpoints can be assumed. **Yandex Team** is the
+internal Yandex installation — see *Installation overlays* below before answering anything specific
+to it.
 
 Tool-specific skills detect the installation for you — the SDK, for instance, ships a preflight
 that reports it. Do not hand-roll detection.
@@ -78,7 +84,6 @@ that reports it. Do not hand-roll detection.
 |---|---|---|
 | Manage entities from Python — create, update, inspect, export, clone | **Python SDK** (`datalens-sdk` on PyPI) | `datalens-sdk` |
 | Let an agent call the DataLens API directly through tools | **MCP server** ([`@datalens-tech/mcp`](https://github.com/datalens-tech/datalens-mcp)) | — see its README |
-| Build a standalone HTML page or report that DataLens renders | its sandboxed HTML page runtime | `datalens-html-pages` |
 | Anything else programmatic | the public HTTP API | — |
 | Explore, click around, look at a rendered chart | the web UI | — human work, not agent work |
 
@@ -93,13 +98,15 @@ requests against the API.
 
 ## Installation overlays
 
-Installation-specific detail may be extended by a skill distributed separately — for the internal
-Yandex installation, `datalens-yateam`. If it is present in the available skills list and the
-environment targets that installation, invoke it: it adds and overrides installation-specific
-detail from this file, and it wins where the two disagree.
+Installation-specific detail may be extended by a skill distributed separately — for Yandex Team,
+`datalens-yateam`. If it is present in the available skills list and the environment targets that
+installation, invoke it: it adds and overrides installation-specific detail from this file, and it
+wins where the two disagree.
 
-If it is not available, do not reconstruct its content. Say which part of the answer is
-installation-dependent and stop there.
+If the task concerns Yandex Team and `datalens-yateam` is *not* in the list, stop and ask the user
+to install it, following the instructions at <https://datalens.yandex-team.ru/get-skills>. Do not
+reconstruct its content in the meantime — say which part of the answer is installation-dependent
+and leave it there.
 
 ## Out of scope
 

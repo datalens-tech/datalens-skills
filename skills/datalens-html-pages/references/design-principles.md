@@ -6,18 +6,24 @@ A dashboard's job is not to impress but to let the reader take in the data fast:
 
 ## Wiring up the styles
 
-The page must be fully self-contained (the CSP blocks external requests except the allowlist), so:
-
-1. Inline the full contents of `assets/dl-theme-tokens.css` and `assets/dl-dashboard.css` into the page's `<style>`.
-2. DataLens itself appends the `theme` (`light | dark | system`) and `lang` (`ru | en`) parameters to the page's query string at render time — nothing to configure, just read `location.search`. Put the theme classes on the root element and define a helper for reading tokens from JS:
+1. Inline the full contents of `assets/dl-theme-tokens.css` and `assets/dl-dashboard.css` into the page's `<style>` — see [SKILL.md](../SKILL.md) for why the page must be self-contained and how the `theme` and `lang` parameters reach it.
+2. Resolve `system` against the OS preference, put the theme classes on the root element, and define a helper for reading tokens from JS.
 
 ```js
 const params = new URLSearchParams(location.search);
-let theme = params.get('theme') ?? 'light';
-if (theme === 'system') {
-  theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+const media = matchMedia('(prefers-color-scheme: dark)');
+const requested = params.get('theme') ?? 'light';
+const resolve = () => (requested === 'system' ? (media.matches ? 'dark' : 'light') : requested);
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  root.classList.add('g-root');
+  root.classList.remove('g-root_theme_light', 'g-root_theme_dark');
+  root.classList.add(`g-root_theme_${theme}`);
 }
-document.documentElement.className = `g-root g-root_theme_${theme}`;
+
+applyTheme(resolve());
+if (requested === 'system') media.addEventListener('change', () => applyTheme(resolve()));
 
 const cssVar = (name) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();

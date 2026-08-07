@@ -81,9 +81,9 @@
     --g-text-code-1-font: var(--g-text-code-font-weight) var(--g-text-code-1-font-size) / var(--g-text-code-1-line-height) var(--g-text-code-font-family);
     --g-text-code-2-font: var(--g-text-code-font-weight) var(--g-text-code-2-font-size) / var(--g-text-code-2-line-height) var(--g-text-code-font-family);
     --g-text-code-3-font: var(--g-text-code-font-weight) var(--g-text-code-3-font-size) / var(--g-text-code-3-line-height) var(--g-text-code-font-family);
-    --g-text-code-inline-1-font: var(--g-text-code-inline-font-weight) var(--g-text-code-inline-1-font-size) / var(--g-text-code-inline-1-line-height) var(--g-text-code-inline-font-family);
-    --g-text-code-inline-2-font: var(--g-text-code-inline-font-weight) var(--g-text-code-inline-2-font-size) / var(--g-text-code-inline-2-line-height) var(--g-text-code-inline-font-family);
-    --g-text-code-inline-3-font: var(--g-text-code-inline-font-weight) var(--g-text-code-inline-3-font-size) / var(--g-text-code-inline-3-line-height) var(--g-text-code-inline-font-family);
+    --g-text-code-inline-1-font: var(--g-text-code-font-weight) var(--g-text-code-inline-1-font-size) / var(--g-text-code-inline-1-line-height) var(--g-text-code-font-family);
+    --g-text-code-inline-2-font: var(--g-text-code-font-weight) var(--g-text-code-inline-2-font-size) / var(--g-text-code-inline-2-line-height) var(--g-text-code-font-family);
+    --g-text-code-inline-3-font: var(--g-text-code-font-weight) var(--g-text-code-inline-3-font-size) / var(--g-text-code-inline-3-line-height) var(--g-text-code-font-family);
     --g-spacing-base: 4px;
     --g-spacing-0: calc(var(--g-spacing-base) * 0);
     --g-spacing-half: calc(var(--g-spacing-base) * 0.5);
@@ -1019,7 +1019,6 @@
     --g-color-private-brand-100-solid: #192c40;
     --g-color-private-brand-50-solid: #1a2735;
     --g-color-private-cool-grey-20-solid: #6b84990d;
-    --dl-panel-edge-shadow: rgba(255, 255, 255, 0.05);
     --dl-color-dashboard-background: #222323;
-    --dl-color-widget-background: #343535ff;
+    --dl-color-widget-background: #343535;
 }

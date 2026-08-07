@@ -119,7 +119,9 @@ lists, and [assets/report.template.html](assets/report.template.html) for a comp
 point.
 
 **Design** — before building a dashboard or report page, ask the user whether they want it styled
-per the DataLens design principles (unless they already said so). If they agree, follow
+per the DataLens design principles (unless they already said so). **If you cannot ask** — a
+non-interactive run with no way to get an answer — default to **not** applying them: style the page
+plainly and say in your output that the design principles were skipped. If they agree, follow
 [references/design-principles.md](references/design-principles.md) — layout grid, chart-type
 selection, colors, number formatting, and theming. It relies on the DataLens design tokens in
 [assets/dl-theme-tokens.css](assets/dl-theme-tokens.css) and base dashboard styles in

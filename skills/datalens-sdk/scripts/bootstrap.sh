@@ -45,10 +45,14 @@ PROBE_PYTHON=""
 PROBE_SDK_VERSION=""
 PROBE_REQUIREMENTS=""
 PROBE_REASON=""
+PROBE_RUNTIME_BASE=""
+PROBE_RUNTIME_PYTHON=""
+PROBE_SITE_CONFIG=""
 VERSION_RELATION=""
 INSTALLED_AVAILABLE_RELATION=""
 MANAGED_RESULT="none"
 MANAGED_SOURCE=""
+MANAGED_OWNERSHIP_RESULT=""
 PROJECT_PYTHON_RESULT="compatible"
 PROJECT_PYTHON_REQUIREMENT=""
 
@@ -121,6 +125,82 @@ base_prefix = os.path.realpath(getattr(sys, "base_prefix", sys.prefix))
 is_virtualenv = prefix != base_prefix or hasattr(sys, "real_prefix")
 raise SystemExit(0 if is_virtualenv and prefix == expected else 1)
 ' "$expected_prefix" >/dev/null 2>&1
+}
+
+bootstrap_probe_runtime_available() {
+    "$1" -c '
+import pip
+
+try:
+    import tomllib
+except ImportError:
+    from pip._vendor import tomli as tomllib
+
+from pip._vendor.packaging.specifiers import SpecifierSet
+from pip._vendor.packaging.version import Version
+' >/dev/null 2>&1
+}
+
+bootstrap_copy_site_policy() {
+    local target_prefix="$1"
+    [ -n "$PROBE_SITE_CONFIG" ] || return 0
+    [ -f "$PROBE_SITE_CONFIG" ] || return 0
+    [ "$PROBE_SITE_CONFIG" = "${target_prefix}/pip.conf" ] && return 0
+    cp "$PROBE_SITE_CONFIG" "${target_prefix}/pip.conf"
+}
+
+bootstrap_select_probe_python() {
+    local base_python="$1"
+    local base_prefix=""
+    local probe_dir=""
+    local probe_python=""
+
+    if [ "$PROBE_RUNTIME_BASE" = "$base_python" ] && [ -x "$PROBE_RUNTIME_PYTHON" ]; then
+        PROBE_PYTHON="$PROBE_RUNTIME_PYTHON"
+        return 0
+    fi
+
+    PROBE_RUNTIME_BASE=""
+    PROBE_RUNTIME_PYTHON=""
+    PROBE_SITE_CONFIG=""
+    base_prefix="$("$base_python" -c 'import os, sys; print(os.path.realpath(sys.prefix))' 2>/dev/null)" || {
+        PROBE_REASON="package_index_query_failed"
+        return 1
+    }
+    [ -n "$base_prefix" ] || {
+        PROBE_REASON="package_index_query_failed"
+        return 1
+    }
+    [ ! -f "${base_prefix}/pip.conf" ] || PROBE_SITE_CONFIG="${base_prefix}/pip.conf"
+
+    if bootstrap_probe_runtime_available "$base_python"; then
+        PROBE_RUNTIME_BASE="$base_python"
+        PROBE_RUNTIME_PYTHON="$base_python"
+        PROBE_PYTHON="$base_python"
+        return 0
+    fi
+
+    probe_dir="$(mktemp -d "${BOOTSTRAP_TMP_ROOT}/probe.XXXXXX")" || {
+        PROBE_REASON="venv_create_failed"
+        return 1
+    }
+    if ! "$base_python" -m venv "${probe_dir}/venv" >/dev/null 2>&1; then
+        PROBE_REASON="venv_create_failed"
+        return 1
+    fi
+    probe_python="${probe_dir}/venv/bin/python"
+    [ -x "$probe_python" ] || probe_python="${probe_dir}/venv/bin/python3"
+    if [ ! -x "$probe_python" ] \
+        || ! bootstrap_environment_identity "$probe_python" "${probe_dir}/venv" \
+        || ! bootstrap_copy_site_policy "${probe_dir}/venv" \
+        || ! bootstrap_probe_runtime_available "$probe_python"; then
+        PROBE_REASON="probe_venv_invalid"
+        return 1
+    fi
+
+    PROBE_RUNTIME_BASE="$base_python"
+    PROBE_RUNTIME_PYTHON="$probe_python"
+    PROBE_PYTHON="$probe_python"
 }
 
 bootstrap_managed_python_info() {
@@ -230,7 +310,11 @@ bootstrap_project_python_compatibility() {
     PROJECT_PYTHON_RESULT="compatible"
     PROJECT_PYTHON_REQUIREMENT=""
     [ -f "${BOOTSTRAP_CWD}/pyproject.toml" ] || return 0
-    info="$("$python_path" -c '
+    if ! bootstrap_select_probe_python "$python_path"; then
+        PROJECT_PYTHON_RESULT="unreadable"
+        return 0
+    fi
+    info="$("$PROBE_PYTHON" -c '
 import pathlib
 import sys
 
@@ -387,12 +471,16 @@ bootstrap_probe() {
     PROBE_REQUIREMENTS=""
     PROBE_REASON=""
 
-    PROBE_PYTHON="$base_python"
+    if ! bootstrap_select_probe_python "$base_python"; then
+        PROBE_RESULT="failed"
+        [ -n "$PROBE_REASON" ] || PROBE_REASON="package_index_query_failed"
+        return 0
+    fi
     query_log="${BOOTSTRAP_TMP_ROOT}/sdk-index.$$.log"
     if [ "$base_python" = "$BOOTSTRAP_PYTHON" ] && [ -d "$BOOTSTRAP_VENV" ]; then
         probe_virtualenv="$BOOTSTRAP_VENV"
     fi
-    if VIRTUAL_ENV="$probe_virtualenv" "$base_python" -m pip index versions datalens-sdk \
+    if VIRTUAL_ENV="$probe_virtualenv" "$PROBE_PYTHON" -m pip index versions datalens-sdk \
         --disable-pip-version-check --no-input --no-color -v >"$query_log" 2>&1; then
         PROBE_SDK_VERSION="$(awk '
             /^datalens-sdk \([^()]+\)$/ {
@@ -442,16 +530,49 @@ bootstrap_extract_managed_version() {
     ' "$1"
 }
 
+bootstrap_probe_managed_ownership() {
+    local base_python="$1"
+    local query_log="${BOOTSTRAP_TMP_ROOT}/${MANAGED_SOURCE}-ownership.log"
+
+    MANAGED_OWNERSHIP_RESULT="failed"
+    case "$MANAGED_SOURCE" in
+        uv)
+            uv sync --dry-run --python "$base_python" --no-progress --color never \
+                >"$query_log" 2>&1 || return 0
+            if grep -Eiq '^[[:space:]]*-[[:space:]]+datalens[-_]sdk([=[:space:]]|$)' "$query_log" \
+                && ! grep -Eiq '^[[:space:]]*[+][[:space:]]+datalens[-_]sdk([=[:space:]]|$)' "$query_log"; then
+                MANAGED_OWNERSHIP_RESULT="unowned"
+            else
+                MANAGED_OWNERSHIP_RESULT="owned"
+            fi
+            ;;
+        poetry)
+            poetry install --sync --dry-run --no-interaction --no-ansi \
+                >"$query_log" 2>&1 || return 0
+            if grep -Eiq 'removing[[:space:]]+datalens[-_]sdk([[:space:](]|$)' "$query_log"; then
+                MANAGED_OWNERSHIP_RESULT="unowned"
+            else
+                MANAGED_OWNERSHIP_RESULT="owned"
+            fi
+            ;;
+    esac
+}
+
 bootstrap_probe_managed() {
     local base_python="$1"
     local installed_version="$2"
     local query_log="${BOOTSTRAP_TMP_ROOT}/${MANAGED_SOURCE}-resolve.log"
 
     PROBE_RESULT=""
-    PROBE_PYTHON="$base_python"
     PROBE_SDK_VERSION=""
     PROBE_REQUIREMENTS=""
     PROBE_REASON=""
+
+    if ! bootstrap_select_probe_python "$base_python"; then
+        PROBE_RESULT="failed"
+        [ -n "$PROBE_REASON" ] || PROBE_REASON="package_index_query_failed"
+        return 0
+    fi
 
     case "$MANAGED_SOURCE" in
         uv)
@@ -784,6 +905,23 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
             ;;
     esac
     BOOTSTRAP_SDK_VERSION="$(bootstrap_sdk_version "$BOOTSTRAP_PYTHON")"
+    if [ -n "$BOOTSTRAP_SDK_VERSION" ] && [ -n "$MANAGED_SOURCE" ]; then
+        bootstrap_probe_managed_ownership "$BOOTSTRAP_PYTHON"
+        case "$MANAGED_OWNERSHIP_RESULT" in
+            owned) : ;;
+            unowned)
+                bootstrap_note "The installed datalens-sdk is not preserved by ${MANAGED_SOURCE}; manager ownership is required."
+                BOOTSTRAP_SDK_VERSION=""
+                BOOTSTRAP_AVAILABLE_SDK_VERSION=""
+                ;;
+            *)
+                BOOTSTRAP_VENV_STATE="reused"
+                BOOTSTRAP_SDK="installed"
+                bootstrap_emit_version_decision "sdk_version_check_failed"
+                exit 0
+                ;;
+        esac
+    fi
     if [ -n "$BOOTSTRAP_SDK_VERSION" ]; then
         BOOTSTRAP_VENV_STATE="reused"
         BOOTSTRAP_SDK="installed"
@@ -1026,6 +1164,8 @@ if [ ! -x "$BOOTSTRAP_PYTHON" ]; then
     PROJECT_INSTALL_REASON="venv_invalid"
 elif ! bootstrap_environment_identity "$BOOTSTRAP_PYTHON" "$BOOTSTRAP_VENV"; then
     PROJECT_INSTALL_REASON="venv_invalid"
+elif ! bootstrap_copy_site_policy "$BOOTSTRAP_VENV"; then
+    PROJECT_INSTALL_REASON="venv_create_failed"
 elif ! bootstrap_install_project "$BOOTSTRAP_PYTHON" "$BOOTSTRAP_AVAILABLE_SDK_VERSION"; then
     PROJECT_INSTALL_REASON="${BOOTSTRAP_REASON:-package_install_failed}"
 fi

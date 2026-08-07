@@ -9,6 +9,16 @@ MOCK_CONFIG="${0}.config"
 if [ "${1:-}" = "-c" ]; then
     MOCK_CODE="${2:-}"
     case "$MOCK_CODE" in
+        *'import pip'*'pip._vendor.packaging.specifiers'*)
+            [ "$MOCK_PROBE_RUNTIME" = "available" ]
+            exit $?
+            ;;
+        *'print(os.path.realpath(sys.prefix))'*)
+            MOCK_BIN_DIR="${0%/*}"
+            MOCK_PREFIX="${MOCK_BIN_DIR%/*}"
+            printf '%s\n' "$MOCK_PREFIX"
+            exit 0
+            ;;
         *'project.get("requires-python")'*)
             printf '%s|%s\n' "$MOCK_PROJECT_REQUIRES_PYTHON" "$MOCK_PROJECT_PYTHON_RESULT"
             exit 0
@@ -81,6 +91,7 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "venv" ]; then
     fi
     cp "$0" "${MOCK_TARGET}/bin/python"
     cp "$MOCK_CONFIG" "${MOCK_TARGET}/bin/python.config"
+    printf 'MOCK_PROBE_RUNTIME=available\n' >>"${MOCK_TARGET}/bin/python.config"
     chmod +x "${MOCK_TARGET}/bin/python"
     if [ -f "${0}.sdk-installed" ]; then
         cp "${0}.sdk-installed" "${MOCK_TARGET}/bin/python.sdk-installed"
@@ -90,8 +101,17 @@ fi
 
 if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
     printf '%s %s\n' "$0" "$*" >>"$MOCK_CALL_LOG"
+    [ "$MOCK_PROBE_RUNTIME" = "available" ] || exit 1
     case "$*" in
         *'index versions datalens-sdk'*)
+            if [ -n "$MOCK_REQUIRED_PIP_CONFIG" ]; then
+                MOCK_BIN_DIR="${0%/*}"
+                MOCK_PREFIX="${MOCK_BIN_DIR%/*}"
+                grep -Fq -- "$MOCK_REQUIRED_PIP_CONFIG" "${MOCK_PREFIX}/pip.conf" 2>/dev/null || {
+                    printf 'ERROR: configured package source was not preserved\n' >&2
+                    exit 1
+                }
+            fi
             case "$MOCK_INSTALL_MODE" in
                 success|fail_project_install|fail_project_break_sdk)
                     printf 'datalens-sdk (%s)\n' "$MOCK_SDK_VERSION"

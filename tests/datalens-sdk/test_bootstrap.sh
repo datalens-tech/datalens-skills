@@ -54,6 +54,8 @@ make_python() {
     local project_python_result="${12:-compatible}"
     local project_requires_python="${13:-}"
     local pip_output_fixture="${14:-}"
+    local probe_runtime="${15:-available}"
+    local required_pip_config="${16:-}"
 
     mkdir -p "$(dirname "$python_path")"
     cp "${TEST_ROOT}/tests/datalens-sdk/fixtures/mock_python.sh" "$python_path"
@@ -71,6 +73,8 @@ make_python() {
         printf 'MOCK_PROJECT_PYTHON_RESULT=%q\n' "$project_python_result"
         printf 'MOCK_PROJECT_REQUIRES_PYTHON=%q\n' "$project_requires_python"
         printf 'MOCK_PIP_OUTPUT_FIXTURE=%q\n' "$pip_output_fixture"
+        printf 'MOCK_PROBE_RUNTIME=%q\n' "$probe_runtime"
+        printf 'MOCK_REQUIRED_PIP_CONFIG=%q\n' "$required_pip_config"
         printf 'MOCK_CALL_LOG=%q\n' "${CASE_DIR}/python-calls"
     } >"${python_path}.config"
     MOCK_MANAGER_AVAILABLE_VERSION="$sdk_version"
@@ -119,6 +123,23 @@ case "${1:-}" in
             printf 'Resolved project without changes\n'
         fi
         ;;
+    sync)
+        printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
+        case "${MOCK_MANAGER_OWNERSHIP_MODE:-owned}" in
+            owned) printf 'Audited project environment\n' ;;
+            unowned)
+                printf 'Would uninstall 1 package\n'
+                printf ' - datalens-sdk==%s\n' "$(<"${MOCK_UV_PYTHON:?}.sdk-installed")"
+                ;;
+            update)
+                printf 'Would uninstall 1 package\nWould install 1 package\n'
+                printf ' - datalens-sdk==%s\n' "$(<"${MOCK_UV_PYTHON:?}.sdk-installed")"
+                printf ' + datalens-sdk==%s\n' "${MOCK_MANAGER_AVAILABLE_VERSION:?}"
+                ;;
+            fail) exit 1 ;;
+            *) exit 2 ;;
+        esac
+        ;;
     add)
         printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
         [ "${MOCK_MANAGER_ADD_MODE:-success}" = "success" ] || exit 1
@@ -163,6 +184,23 @@ case "${1:-}" in
             *) exit 1 ;;
         esac
         ;;
+    install)
+        printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
+        case "${MOCK_MANAGER_OWNERSHIP_MODE:-owned}" in
+            owned) printf 'No dependencies to install or update\n' ;;
+            unowned)
+                printf 'Package operations: 0 installs, 0 updates, 1 removal\n'
+                printf '  - Removing datalens-sdk (%s)\n' "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")"
+                ;;
+            update)
+                printf 'Package operations: 0 installs, 1 update, 0 removals\n'
+                printf '  - Updating datalens-sdk (%s -> %s)\n' \
+                    "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")" "${MOCK_MANAGER_AVAILABLE_VERSION:?}"
+                ;;
+            fail) exit 1 ;;
+            *) exit 2 ;;
+        esac
+        ;;
     *) exit 1 ;;
 esac
 EOF
@@ -184,7 +222,9 @@ new_case() {
     MOCK_MANAGER_ADD_MODE="success"
     MOCK_MANAGER_RESOLVE_MODE="success"
     MOCK_MANAGER_AVAILABLE_VERSION="9.9.0"
-    export MOCK_MANAGER_LOG MOCK_MANAGER_ADD_MODE MOCK_MANAGER_RESOLVE_MODE MOCK_MANAGER_AVAILABLE_VERSION
+    MOCK_MANAGER_OWNERSHIP_MODE="owned"
+    export MOCK_MANAGER_LOG MOCK_MANAGER_ADD_MODE MOCK_MANAGER_RESOLVE_MODE MOCK_MANAGER_AVAILABLE_VERSION \
+        MOCK_MANAGER_OWNERSHIP_MODE
     unset MOCK_PYENV_VERSION MOCK_PYENV_PREFIX MOCK_UV_PYTHON MOCK_POETRY_PYTHON || true
 }
 
@@ -283,6 +323,8 @@ test_uv_array_source_marker_uses_native_resolver() {
     export MOCK_UV_PYTHON
     make_python "$MOCK_UV_PYTHON" "7.4.2" success "11.0.0" success ">=3" yes success "10.0.0" newer
     make_uv "$CASE_TOOLS/uv"
+    MOCK_MANAGER_OWNERSHIP_MODE="update"
+    export MOCK_MANAGER_OWNERSHIP_MODE
     run_bootstrap
     assert_contains "$CASE_OUTPUT" "AVAILABLE_SDK_VERSION=11.0.0"
     assert_contains "$CASE_OUTPUT" "REASON=sdk_update_available"
@@ -392,6 +434,75 @@ test_managed_install_failure_preserves_environment() {
     assert_contains "$CASE_OUTPUT" "REASON=sdk_install_failed"
     assert_contains "$CASE_OUTPUT" "STATUS=blocked"
     [ -e "$CASE_PROJECT/.venv/user-sentinel" ] || fail "managed install failure replaced the environment"
+}
+
+test_uv_pip_installed_sdk_requires_manager_ownership() {
+    new_case uv-unowned-sdk
+    touch "$CASE_PROJECT/uv.lock"
+    MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_UV_PYTHON
+    make_python "$MOCK_UV_PYTHON" "7.4.2" success "9.9.0" success ">=3" yes
+    make_uv "$CASE_TOOLS/uv"
+    MOCK_MANAGER_OWNERSHIP_MODE="unowned"
+    export MOCK_MANAGER_OWNERSHIP_MODE
+
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "SDK=missing"
+    assert_not_contains "$CASE_OUTPUT" "SDK_VERSION="
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_install_required"
+    assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "sync --dry-run"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+
+    run_bootstrap --install-sdk
+    assert_contains "$CASE_OUTPUT" "SDK=installed_now"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.9.0"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+}
+
+test_poetry_pip_installed_sdk_requires_manager_ownership() {
+    new_case poetry-unowned-sdk
+    touch "$CASE_PROJECT/poetry.lock"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_POETRY_PYTHON
+    make_python "$MOCK_POETRY_PYTHON" "7.4.2" success "9.9.0" success ">=3" yes
+    make_poetry "$CASE_TOOLS/poetry"
+    MOCK_MANAGER_OWNERSHIP_MODE="unowned"
+    export MOCK_MANAGER_OWNERSHIP_MODE
+
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "SDK=missing"
+    assert_not_contains "$CASE_OUTPUT" "SDK_VERSION="
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_install_required"
+    assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "install --sync --dry-run"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+
+    run_bootstrap --install-sdk
+    assert_contains "$CASE_OUTPUT" "SDK=installed_now"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.9.0"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+}
+
+test_managed_ownership_check_failure_never_reports_ready() {
+    new_case uv-ownership-failed
+    touch "$CASE_PROJECT/uv.lock"
+    MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_UV_PYTHON
+    make_python "$MOCK_UV_PYTHON" "7.4.2" success "9.9.0" success ">=3" yes
+    make_uv "$CASE_TOOLS/uv"
+    MOCK_MANAGER_OWNERSHIP_MODE="fail"
+    export MOCK_MANAGER_OWNERSHIP_MODE
+
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "SDK=installed"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.9.0"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_version_check_failed"
+    assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
+    assert_not_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "lock --dry-run"
 }
 
 test_managed_project_without_tool_is_preserved() {
@@ -580,6 +691,29 @@ test_existing_compatible_venv_is_installed_in_place() {
     assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.9.1"
     assert_contains "$CASE_OUTPUT" "STATUS=ready"
     [ -e "$CASE_PROJECT/.venv/bin/python.sdk-installed" ] || fail "SDK was not installed into compatible .venv"
+}
+
+test_base_without_pip_uses_policy_preserving_probe() {
+    local base_prefix=""
+    new_case base-without-pip
+    base_prefix="${CASE_DIR}/base-python"
+    printf '%s\n' '[project]' 'requires-python = ">=3.10,<3.14"' >"$CASE_PROJECT/pyproject.toml"
+    make_python "${base_prefix}/bin/python3" "3.12.11" success "9.9.0" success ">=3.10" no \
+        success "9.9.0" newer valid compatible ">=3.10,<3.14" "" missing private-index-policy
+    printf '%s\n' '[global]' '# private-index-policy' \
+        'index-url = https://packages.example/simple' >"${base_prefix}/pip.conf"
+    CASE_PATH="${base_prefix}/bin:${CASE_TOOLS}"
+
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "VENV=created"
+    assert_contains "$CASE_OUTPUT" "PYTHON_VERSION=3.12.11"
+    assert_contains "$CASE_OUTPUT" "PROJECT_REQUIRES_PYTHON=>=3.10,<3.14"
+    assert_contains "$CASE_OUTPUT" "SDK=installed_now"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$CASE_DIR/python-calls")" "/probe."
+    assert_not_contains "$(<"$CASE_DIR/python-calls")" "${base_prefix}/bin/python3 -m pip"
+    grep -Fq -- private-index-policy "$CASE_PROJECT/.venv/pip.conf" \
+        || fail "project venv did not retain the base pip source policy"
 }
 
 test_path_alternative_after_python_rejection() {
@@ -850,6 +984,9 @@ for test_name in \
     test_managed_upgrade_uses_poetry_after_consent \
     test_managed_install_rejects_legacy_version_argument \
     test_managed_install_failure_preserves_environment \
+    test_uv_pip_installed_sdk_requires_manager_ownership \
+    test_poetry_pip_installed_sdk_requires_manager_ownership \
+    test_managed_ownership_check_failure_never_reports_ready \
     test_managed_project_without_tool_is_preserved \
     test_invalid_managed_environment_is_preserved \
     test_existing_current_sdk_is_reused_after_check \
@@ -867,6 +1004,7 @@ for test_name in \
     test_upgrade_requires_prior_installed_sdk \
     test_invalid_arguments_do_not_modify_project \
     test_existing_compatible_venv_is_installed_in_place \
+    test_base_without_pip_uses_policy_preserving_probe \
     test_path_alternative_after_python_rejection \
     test_pip_21_macos_incompatibility_output_finds_alternative \
     test_current_pip_incompatibility_output_finds_alternative \

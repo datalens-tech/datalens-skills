@@ -47,17 +47,20 @@ The script deliberately does not encode an SDK version or a Python compatibility
 environments query through the selected interpreter's pip configuration; uv and Poetry projects
 resolve through their native project sources. Candidate selection intersects the SDK metadata with
 `PROJECT_REQUIRES_PYTHON` and a numeric `.python-version` pin when present. Compatibility and
-freshness checks never upgrade pip or install the SDK or its dependencies.
+freshness checks never upgrade pip or install the SDK or its dependencies. If a candidate can
+create a venv but lacks base pip or its vendored parsing libraries, bootstrap uses a disposable
+venv seeded by that exact interpreter and carries its pip source policy into the probe.
 
 Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
 
 - `STATUS=ready` — use the absolute interpreter from `PYTHON` for every subsequent Python call.
 - `STATUS=decision_required` — do not load the package skill or perform SDK work yet:
   - `REASON=sdk_install_required` — a uv/Poetry project needs `datalens-sdk` added to its managed
-    dependencies. Explain that the manager will select the exact version from the project's sources
-    and Python constraints, and that the project manifest and lock may change. No
-    `AVAILABLE_SDK_VERSION` is expected before this consent. If they approve, run the exact command
-    below, then parse its result again:
+    dependencies. This also covers an importable SDK that was installed directly with pip but
+    would be removed by the manager's exact sync. Explain that the manager will select the exact
+    version from the project's sources and Python constraints, and that the project manifest and
+    lock may change. No `SDK_VERSION` or `AVAILABLE_SDK_VERSION` is expected before this consent.
+    If they approve, run the exact command below, then parse its result again:
 
     ```bash
     bash "/absolute/path/to/datalens-sdk/scripts/bootstrap.sh" --install-sdk
@@ -81,9 +84,9 @@ Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
     release offered by the index, and bootstrap will not downgrade or guess. Ask whether to keep
     the installed version or retry the original check later.
   - `REASON=sdk_version_check_failed` with `SDK=installed` — explain that the installed SDK works
-    but its freshness could not be verified. Ask whether to continue with the reported
-    `SDK_VERSION` or retry the original bootstrap command. Do not silently continue or describe it
-    as current. This reason never applies to `SDK=missing`.
+    but its freshness or manager ownership could not be verified. Ask whether to continue with the
+    reported `SDK_VERSION` or retry the original bootstrap command. Do not silently continue or
+    describe it as current. This reason never applies to `SDK=missing`.
   - `REASON=sdk_upgrade_failed` with `SDK=installed` — explain that the upgrade failed but the
     reported `SDK_VERSION` remains usable. Ask whether to continue with it or stop; retry the exact
     upgrade command only if the user requests it.

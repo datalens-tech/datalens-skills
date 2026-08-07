@@ -10,8 +10,16 @@ if [ "${1:-}" = "-c" ]; then
     MOCK_CODE="${2:-}"
     case "$MOCK_CODE" in
         *'import pip'*'pip._vendor.packaging.specifiers'*)
-            [ "$MOCK_PROBE_RUNTIME" = "available" ]
-            exit $?
+            case "$MOCK_PROBE_RUNTIME" in
+                available) exit 0 ;;
+                legacy)
+                    case "$MOCK_CODE" in
+                        *'pip._vendor import tomli'*) exit 1 ;;
+                        *) exit 0 ;;
+                    esac
+                    ;;
+                *) exit 1 ;;
+            esac
             ;;
         *'print(os.path.realpath(sys.prefix))'*)
             MOCK_BIN_DIR="${0%/*}"
@@ -20,6 +28,12 @@ if [ "${1:-}" = "-c" ]; then
             exit 0
             ;;
         *'project.get("requires-python")'*)
+            if [ "$MOCK_PROBE_RUNTIME" = "legacy" ]; then
+                case "$MOCK_CODE" in
+                    *'pip._vendor import toml as tomllib'*) : ;;
+                    *) exit 1 ;;
+                esac
+            fi
             printf '%s|%s\n' "$MOCK_PROJECT_REQUIRES_PYTHON" "$MOCK_PROJECT_PYTHON_RESULT"
             exit 0
             ;;
@@ -91,7 +105,9 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "venv" ]; then
     fi
     cp "$0" "${MOCK_TARGET}/bin/python"
     cp "$MOCK_CONFIG" "${MOCK_TARGET}/bin/python.config"
-    printf 'MOCK_PROBE_RUNTIME=available\n' >>"${MOCK_TARGET}/bin/python.config"
+    printf 'MOCK_PROBE_RUNTIME=%s\n' "$MOCK_VENV_PROBE_RUNTIME" \
+        >>"${MOCK_TARGET}/bin/python.config"
+    printf 'MOCK_IS_VIRTUALENV=yes\n' >>"${MOCK_TARGET}/bin/python.config"
     chmod +x "${MOCK_TARGET}/bin/python"
     if [ -f "${0}.sdk-installed" ]; then
         cp "${0}.sdk-installed" "${MOCK_TARGET}/bin/python.sdk-installed"
@@ -101,7 +117,14 @@ fi
 
 if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
     printf '%s %s\n' "$0" "$*" >>"$MOCK_CALL_LOG"
-    [ "$MOCK_PROBE_RUNTIME" = "available" ] || exit 1
+    case "$MOCK_PROBE_RUNTIME" in
+        available|legacy) : ;;
+        *) exit 1 ;;
+    esac
+    if [ "${PIP_REQUIRE_VIRTUALENV:-}" = "true" ] && [ "$MOCK_IS_VIRTUALENV" != "yes" ]; then
+        printf 'ERROR: Could not find an activated virtualenv (required).\n' >&2
+        exit 3
+    fi
     case "$*" in
         *'index versions datalens-sdk'*)
             if [ -n "$MOCK_REQUIRED_PIP_CONFIG" ]; then

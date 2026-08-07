@@ -5,13 +5,13 @@
 #   * prefers a uv/Poetry-managed environment over a same-named ./.venv;
 #   * verifies environment identity before every project-environment mutation;
 #   * resolves freshness through the selected pip, uv, or Poetry source policy;
-#   * asks its caller to obtain consent before changing managed dependencies;
+#   * asks its caller to obtain consent before installing managed dependencies;
 #   * changes interpreter only after pip reports Requires-Python incompatibility;
 #   * creates ./.venv only after a compatible interpreter has been proven.
 #
 # Machine-readable output follows the ---BOOTSTRAP--- marker. The script always
 # exits zero; callers must act on STATUS. Pass --install-sdk only after the
-# user approves a manager-selected addition, or --upgrade-sdk VERSION only
+# user approves a manager-selected install, or --upgrade-sdk VERSION only
 # after the user approves the exact version reported by a prior run.
 
 set -uo pipefail
@@ -47,6 +47,7 @@ PROBE_REQUIREMENTS=""
 PROBE_REASON=""
 PROBE_RUNTIME_BASE=""
 PROBE_RUNTIME_PYTHON=""
+PROBE_RUNTIME_MODE=""
 PROBE_SITE_CONFIG=""
 VERSION_RELATION=""
 INSTALLED_AVAILABLE_RELATION=""
@@ -130,12 +131,6 @@ raise SystemExit(0 if is_virtualenv and prefix == expected else 1)
 bootstrap_probe_runtime_available() {
     "$1" -c '
 import pip
-
-try:
-    import tomllib
-except ImportError:
-    from pip._vendor import tomli as tomllib
-
 from pip._vendor.packaging.specifiers import SpecifierSet
 from pip._vendor.packaging.version import Version
 ' >/dev/null 2>&1
@@ -151,17 +146,21 @@ bootstrap_copy_site_policy() {
 
 bootstrap_select_probe_python() {
     local base_python="$1"
+    local probe_mode="${2:-auto}"
     local base_prefix=""
     local probe_dir=""
     local probe_python=""
 
-    if [ "$PROBE_RUNTIME_BASE" = "$base_python" ] && [ -x "$PROBE_RUNTIME_PYTHON" ]; then
+    if [ "$PROBE_RUNTIME_BASE" = "$base_python" ] \
+        && [ "$PROBE_RUNTIME_MODE" = "$probe_mode" ] \
+        && [ -x "$PROBE_RUNTIME_PYTHON" ]; then
         PROBE_PYTHON="$PROBE_RUNTIME_PYTHON"
         return 0
     fi
 
     PROBE_RUNTIME_BASE=""
     PROBE_RUNTIME_PYTHON=""
+    PROBE_RUNTIME_MODE=""
     PROBE_SITE_CONFIG=""
     base_prefix="$("$base_python" -c 'import os, sys; print(os.path.realpath(sys.prefix))' 2>/dev/null)" || {
         PROBE_REASON="package_index_query_failed"
@@ -173,9 +172,10 @@ bootstrap_select_probe_python() {
     }
     [ ! -f "${base_prefix}/pip.conf" ] || PROBE_SITE_CONFIG="${base_prefix}/pip.conf"
 
-    if bootstrap_probe_runtime_available "$base_python"; then
+    if [ "$probe_mode" != "isolated" ] && bootstrap_probe_runtime_available "$base_python"; then
         PROBE_RUNTIME_BASE="$base_python"
         PROBE_RUNTIME_PYTHON="$base_python"
+        PROBE_RUNTIME_MODE="$probe_mode"
         PROBE_PYTHON="$base_python"
         return 0
     fi
@@ -200,6 +200,7 @@ bootstrap_select_probe_python() {
 
     PROBE_RUNTIME_BASE="$base_python"
     PROBE_RUNTIME_PYTHON="$probe_python"
+    PROBE_RUNTIME_MODE="$probe_mode"
     PROBE_PYTHON="$probe_python"
 }
 
@@ -305,12 +306,13 @@ bootstrap_matches_configured_python() {
 
 bootstrap_project_python_compatibility() {
     local python_path="$1"
+    local probe_mode="${2:-auto}"
     local info=""
 
     PROJECT_PYTHON_RESULT="compatible"
     PROJECT_PYTHON_REQUIREMENT=""
     [ -f "${BOOTSTRAP_CWD}/pyproject.toml" ] || return 0
-    if ! bootstrap_select_probe_python "$python_path"; then
+    if ! bootstrap_select_probe_python "$python_path" "$probe_mode"; then
         PROJECT_PYTHON_RESULT="unreadable"
         return 0
     fi
@@ -327,12 +329,14 @@ except ImportError:
         try:
             from pip._vendor import tomli as tomllib
         except ImportError:
-            print("|unreadable")
-            raise SystemExit
+            try:
+                from pip._vendor import toml as tomllib
+            except ImportError:
+                print("|unreadable")
+                raise SystemExit
 
 try:
-    with pathlib.Path(sys.argv[1]).open("rb") as stream:
-        project = tomllib.load(stream).get("project", {})
+    project = tomllib.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")).get("project", {})
     requirement = project.get("requires-python")
 except Exception:
     print("|unreadable")
@@ -462,6 +466,7 @@ bootstrap_merge_requirements() {
 
 bootstrap_probe() {
     local base_python="$1"
+    local probe_mode="${2:-auto}"
     local query_log=""
     local probe_virtualenv=""
 
@@ -471,7 +476,7 @@ bootstrap_probe() {
     PROBE_REQUIREMENTS=""
     PROBE_REASON=""
 
-    if ! bootstrap_select_probe_python "$base_python"; then
+    if ! bootstrap_select_probe_python "$base_python" "$probe_mode"; then
         PROBE_RESULT="failed"
         [ -n "$PROBE_REASON" ] || PROBE_REASON="package_index_query_failed"
         return 0
@@ -676,7 +681,7 @@ bootstrap_find_compatible_alternative() {
     bootstrap_collect_candidates "$excluded" >"$candidates_sorted"
     while IFS='|' read -r score version source path; do
         [ -n "$path" ] || continue
-        bootstrap_project_python_compatibility "$path"
+        bootstrap_project_python_compatibility "$path" isolated
         case "$PROJECT_PYTHON_RESULT" in
             compatible) : ;;
             incompatible) continue ;;
@@ -690,7 +695,7 @@ bootstrap_find_compatible_alternative() {
                 ;;
         esac
         bootstrap_note "Probing Python ${version} from ${source} for datalens-sdk compatibility..."
-        bootstrap_probe "$path"
+        bootstrap_probe "$path" isolated
         bootstrap_merge_requirements "$PROBE_REQUIREMENTS"
         case "$PROBE_RESULT" in
             compatible)
@@ -721,6 +726,7 @@ bootstrap_install_project() {
     local project_python="$1"
     local target_version="${2:-}"
     local install_log="${BOOTSTRAP_TMP_ROOT}/project-install.log"
+    local plan_log="${BOOTSTRAP_TMP_ROOT}/poetry-install-plan.log"
     local requirement="datalens-sdk"
     local action="Installing"
     [ "$BOOTSTRAP_ACTION" = "upgrade" ] && action="Upgrading"
@@ -738,7 +744,20 @@ bootstrap_install_project() {
             project_python="$BOOTSTRAP_PYTHON"
             ;;
         poetry)
-            poetry add "$requirement" >"$install_log" 2>&1 || return 1
+            if [ -z "$target_version" ]; then
+                if ! poetry install --dry-run --no-root --no-interaction --no-ansi \
+                    >"$plan_log" 2>&1; then
+                    return 1
+                fi
+                if grep -Eiq '(installing|updating|downgrading)[[:space:]]+datalens[-_]sdk([[:space:](]|$)' \
+                    "$plan_log"; then
+                    poetry install --no-root --no-interaction --no-ansi >"$install_log" 2>&1 || return 1
+                else
+                    poetry add "$requirement" >"$install_log" 2>&1 || return 1
+                fi
+            else
+                poetry add "$requirement" >"$install_log" 2>&1 || return 1
+            fi
             bootstrap_managed_python_info poetry || return 1
             project_python="$BOOTSTRAP_PYTHON"
             ;;
@@ -1098,7 +1117,7 @@ if [ -n "$DEFAULT_PYTHON" ] && bootstrap_python_info "$DEFAULT_PYTHON"; then
         CANDIDATE_PATH=""
     else
         [ -n "$BOOTSTRAP_CONFIGURED_PYTHON" ] && BOOTSTRAP_CONFIGURED_MATCH_SEEN="yes"
-        bootstrap_project_python_compatibility "$DEFAULT_PYTHON"
+        bootstrap_project_python_compatibility "$DEFAULT_PYTHON" isolated
         case "$PROJECT_PYTHON_RESULT" in
             invalid)
                 BOOTSTRAP_REASON="project_python_constraint_invalid"
@@ -1115,7 +1134,7 @@ if [ -n "$DEFAULT_PYTHON" ] && bootstrap_python_info "$DEFAULT_PYTHON"; then
                 ;;
             compatible)
                 bootstrap_note "Probing default Python ${CANDIDATE_VERSION} for datalens-sdk compatibility..."
-                bootstrap_probe "$DEFAULT_PYTHON"
+                bootstrap_probe "$DEFAULT_PYTHON" isolated
                 bootstrap_merge_requirements "$PROBE_REQUIREMENTS"
                 case "$PROBE_RESULT" in
                     compatible)

@@ -48,19 +48,23 @@ environments query through the selected interpreter's pip configuration; uv and 
 resolve through their native project sources. Candidate selection intersects the SDK metadata with
 `PROJECT_REQUIRES_PYTHON` and a numeric `.python-version` pin when present. Compatibility and
 freshness checks never upgrade pip or install the SDK or its dependencies. If a candidate can
-create a venv but lacks base pip or its vendored parsing libraries, bootstrap uses a disposable
-venv seeded by that exact interpreter and carries its pip source policy into the probe.
+create a venv, bootstrap uses a disposable venv seeded by that exact interpreter for fresh-project
+probes and carries its pip source policy into the probe. Verified project environments are queried
+directly.
 
 Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
 
 - `STATUS=ready` — use the absolute interpreter from `PYTHON` for every subsequent Python call.
 - `STATUS=decision_required` — do not load the package skill or perform SDK work yet:
-  - `REASON=sdk_install_required` — a uv/Poetry project needs `datalens-sdk` added to its managed
-    dependencies. This also covers an importable SDK that was installed directly with pip but
-    would be removed by the manager's exact sync. Explain that the manager will select the exact
-    version from the project's sources and Python constraints, and that the project manifest and
-    lock may change. No `SDK_VERSION` or `AVAILABLE_SDK_VERSION` is expected before this consent.
-    If they approve, run the exact command below, then parse its result again:
+  - `REASON=sdk_install_required` — a uv/Poetry project needs `datalens-sdk` installed through its
+    manager. The dependency may already be declared but missing from an unsynced environment, or
+    it may need to be added. This also covers an importable SDK that was installed directly with
+    pip but would be removed by the manager's exact sync. Explain that the manager will select the
+    exact version from the project's sources and Python constraints, and that the project manifest
+    and lock may change. A Poetry install can also install other missing locked dependencies, but
+    does not perform an exact sync or remove untracked packages. No `SDK_VERSION` or
+    `AVAILABLE_SDK_VERSION` is expected before this consent. If they approve, run the exact command
+    below, then parse its result again:
 
     ```bash
     bash "/absolute/path/to/datalens-sdk/scripts/bootstrap.sh" --install-sdk

@@ -56,6 +56,7 @@ make_python() {
     local pip_output_fixture="${14:-}"
     local probe_runtime="${15:-available}"
     local required_pip_config="${16:-}"
+    local venv_probe_runtime="${17:-available}"
 
     mkdir -p "$(dirname "$python_path")"
     cp "${TEST_ROOT}/tests/datalens-sdk/fixtures/mock_python.sh" "$python_path"
@@ -75,6 +76,8 @@ make_python() {
         printf 'MOCK_PIP_OUTPUT_FIXTURE=%q\n' "$pip_output_fixture"
         printf 'MOCK_PROBE_RUNTIME=%q\n' "$probe_runtime"
         printf 'MOCK_REQUIRED_PIP_CONFIG=%q\n' "$required_pip_config"
+        printf 'MOCK_VENV_PROBE_RUNTIME=%q\n' "$venv_probe_runtime"
+        printf 'MOCK_IS_VIRTUALENV=no\n'
         printf 'MOCK_CALL_LOG=%q\n' "${CASE_DIR}/python-calls"
     } >"${python_path}.config"
     MOCK_MANAGER_AVAILABLE_VERSION="$sdk_version"
@@ -186,18 +189,48 @@ case "${1:-}" in
         ;;
     install)
         printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
-        case "${MOCK_MANAGER_OWNERSHIP_MODE:-owned}" in
-            owned) printf 'No dependencies to install or update\n' ;;
-            unowned)
-                printf 'Package operations: 0 installs, 0 updates, 1 removal\n'
-                printf '  - Removing datalens-sdk (%s)\n' "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")"
+        case "$*" in
+            *'--sync --dry-run'*)
+                case "${MOCK_MANAGER_OWNERSHIP_MODE:-owned}" in
+                    owned) printf 'No dependencies to install or update\n' ;;
+                    unowned)
+                        printf 'Package operations: 0 installs, 0 updates, 1 removal\n'
+                        printf '  - Removing datalens-sdk (%s)\n' "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")"
+                        ;;
+                    update)
+                        printf 'Package operations: 0 installs, 1 update, 0 removals\n'
+                        printf '  - Updating datalens-sdk (%s -> %s)\n' \
+                            "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")" "${MOCK_MANAGER_AVAILABLE_VERSION:?}"
+                        ;;
+                    fail) exit 1 ;;
+                    *) exit 2 ;;
+                esac
                 ;;
-            update)
-                printf 'Package operations: 0 installs, 1 update, 0 removals\n'
-                printf '  - Updating datalens-sdk (%s -> %s)\n' \
-                    "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")" "${MOCK_MANAGER_AVAILABLE_VERSION:?}"
+            *'--dry-run --no-root'*)
+                case "${MOCK_POETRY_DEPENDENCY_MODE:-undeclared}" in
+                    declared)
+                        printf 'Package operations: 1 install, 0 updates, 0 removals\n'
+                        printf '  • Installing datalens-sdk (%s)\n' "${MOCK_POETRY_DECLARED_VERSION:?}"
+                        ;;
+                    downgrade)
+                        printf 'Package operations: 0 installs, 0 updates, 1 downgrade\n'
+                        printf '  - Downgrading datalens-sdk (9.9.0 -> %s)\n' \
+                            "${MOCK_POETRY_DECLARED_VERSION:?}"
+                        ;;
+                    undeclared) printf 'No dependencies to install or update\n' ;;
+                    fail) exit 1 ;;
+                    *) exit 2 ;;
+                esac
                 ;;
-            fail) exit 1 ;;
+            *'--no-root'*)
+                case "${MOCK_POETRY_DEPENDENCY_MODE:-undeclared}" in
+                    declared|downgrade) : ;;
+                    *) exit 2 ;;
+                esac
+                printf '%s\n' "${MOCK_POETRY_DECLARED_VERSION:?}" \
+                    >"${MOCK_POETRY_PYTHON:?}.sdk-installed"
+                printf '  - Installing datalens-sdk (%s)\n' "$MOCK_POETRY_DECLARED_VERSION"
+                ;;
             *) exit 2 ;;
         esac
         ;;
@@ -223,9 +256,12 @@ new_case() {
     MOCK_MANAGER_RESOLVE_MODE="success"
     MOCK_MANAGER_AVAILABLE_VERSION="9.9.0"
     MOCK_MANAGER_OWNERSHIP_MODE="owned"
+    MOCK_POETRY_DEPENDENCY_MODE="undeclared"
+    MOCK_POETRY_DECLARED_VERSION="0.3.0"
     export MOCK_MANAGER_LOG MOCK_MANAGER_ADD_MODE MOCK_MANAGER_RESOLVE_MODE MOCK_MANAGER_AVAILABLE_VERSION \
-        MOCK_MANAGER_OWNERSHIP_MODE
+        MOCK_MANAGER_OWNERSHIP_MODE MOCK_POETRY_DEPENDENCY_MODE MOCK_POETRY_DECLARED_VERSION
     unset MOCK_PYENV_VERSION MOCK_PYENV_PREFIX MOCK_UV_PYTHON MOCK_POETRY_PYTHON || true
+    unset PIP_REQUIRE_VIRTUALENV || true
 }
 
 run_bootstrap() {
@@ -382,6 +418,84 @@ test_managed_install_requires_consent_and_uses_uv() {
     assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.9.0"
     assert_contains "$CASE_OUTPUT" "STATUS=ready"
     assert_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+}
+
+test_declared_poetry_dependency_is_installed_without_readding() {
+    local manifest_before=""
+    local lock_before=""
+    new_case poetry-declared-missing
+    printf '%s\n' \
+        '[tool.poetry]' \
+        'name = "example"' \
+        'version = "0.1.0"' \
+        '[tool.poetry.dependencies]' \
+        'python = "^3.10"' \
+        'datalens-sdk = "0.3.0"' >"$CASE_PROJECT/pyproject.toml"
+    printf '%s\n' '[[package]]' 'name = "datalens-sdk"' 'version = "0.3.0"' \
+        >"$CASE_PROJECT/poetry.lock"
+    manifest_before="$(<"$CASE_PROJECT/pyproject.toml")"
+    lock_before="$(<"$CASE_PROJECT/poetry.lock")"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    MOCK_POETRY_DEPENDENCY_MODE="declared"
+    MOCK_POETRY_DECLARED_VERSION="0.3.0"
+    export MOCK_POETRY_PYTHON MOCK_POETRY_DEPENDENCY_MODE MOCK_POETRY_DECLARED_VERSION
+    make_python "$MOCK_POETRY_PYTHON" "3.12.11" success "9.9.0"
+    make_poetry "$CASE_TOOLS/poetry"
+
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_install_required"
+    assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
+    [ ! -e "$MOCK_POETRY_PYTHON.sdk-installed" ] || fail "Poetry SDK was installed without consent"
+    [ ! -s "$MOCK_MANAGER_LOG" ] || fail "Poetry install planning ran without consent"
+
+    run_bootstrap --install-sdk
+    assert_contains "$CASE_OUTPUT" "SDK=installed_now"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=0.3.0"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "install --dry-run --no-root --no-interaction --no-ansi"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "install --no-root --no-interaction --no-ansi"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+    [ "$(<"$CASE_PROJECT/pyproject.toml")" = "$manifest_before" ] \
+        || fail "Poetry install changed the declared SDK constraint"
+    [ "$(<"$CASE_PROJECT/poetry.lock")" = "$lock_before" ] \
+        || fail "Poetry install changed the existing lock"
+}
+
+test_poetry_install_plan_failure_does_not_mutate_project() {
+    new_case poetry-install-plan-failure
+    touch "$CASE_PROJECT/poetry.lock"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    MOCK_POETRY_DEPENDENCY_MODE="fail"
+    export MOCK_POETRY_PYTHON MOCK_POETRY_DEPENDENCY_MODE
+    make_python "$MOCK_POETRY_PYTHON" "3.12.11" success "9.9.0"
+    make_poetry "$CASE_TOOLS/poetry"
+
+    run_bootstrap --install-sdk
+    assert_contains "$CASE_OUTPUT" "SDK=missing"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_install_failed"
+    assert_contains "$CASE_OUTPUT" "STATUS=blocked"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "install --dry-run --no-root --no-interaction --no-ansi"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "install --no-root --no-interaction --no-ansi"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+    [ ! -e "$MOCK_POETRY_PYTHON.sdk-installed" ] || fail "failed Poetry plan installed the SDK"
+}
+
+test_poetry_declared_sdk_downgrade_uses_install() {
+    new_case poetry-declared-downgrade
+    touch "$CASE_PROJECT/poetry.lock"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    MOCK_POETRY_DEPENDENCY_MODE="downgrade"
+    MOCK_POETRY_DECLARED_VERSION="0.3.0"
+    export MOCK_POETRY_PYTHON MOCK_POETRY_DEPENDENCY_MODE MOCK_POETRY_DECLARED_VERSION
+    make_python "$MOCK_POETRY_PYTHON" "3.12.11" success "9.9.0"
+    make_poetry "$CASE_TOOLS/poetry"
+
+    run_bootstrap --install-sdk
+    assert_contains "$CASE_OUTPUT" "SDK=installed_now"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=0.3.0"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "install --no-root --no-interaction --no-ansi"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
 }
 
 test_managed_upgrade_uses_poetry_after_consent() {
@@ -716,6 +830,42 @@ test_base_without_pip_uses_policy_preserving_probe() {
         || fail "project venv did not retain the base pip source policy"
 }
 
+test_fresh_bootstrap_uses_venv_when_pip_requires_virtualenv() {
+    local base_prefix=""
+    new_case require-virtualenv
+    base_prefix="${CASE_DIR}/base-python"
+    make_python "${base_prefix}/bin/python3" "3.12.11" success "9.9.0"
+    CASE_PATH="${base_prefix}/bin:${CASE_TOOLS}"
+    PIP_REQUIRE_VIRTUALENV=true
+    export PIP_REQUIRE_VIRTUALENV
+
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "VENV=created"
+    assert_contains "$CASE_OUTPUT" "PYTHON_VERSION=3.12.11"
+    assert_contains "$CASE_OUTPUT" "SDK=installed_now"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$CASE_DIR/python-calls")" "/probe."
+    assert_not_contains "$(<"$CASE_DIR/python-calls")" "${base_prefix}/bin/python3 -m pip"
+}
+
+test_old_ensurepip_probe_uses_vendored_toml() {
+    local base_prefix=""
+    new_case legacy-ensurepip
+    base_prefix="${CASE_DIR}/base-python"
+    printf '%s\n' '[project]' 'requires-python = ">=3.8"' >"$CASE_PROJECT/pyproject.toml"
+    make_python "${base_prefix}/bin/python3" "3.8.6" success "9.9.0" success ">=3.8" no \
+        success "9.9.0" newer valid compatible ">=3.8" "" available "" legacy
+    CASE_PATH="${base_prefix}/bin:${CASE_TOOLS}"
+
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "VENV=created"
+    assert_contains "$CASE_OUTPUT" "PYTHON_VERSION=3.8.6"
+    assert_contains "$CASE_OUTPUT" "PROJECT_REQUIRES_PYTHON=>=3.8"
+    assert_contains "$CASE_OUTPUT" "SDK=installed_now"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$CASE_DIR/python-calls")" "/probe."
+}
+
 test_path_alternative_after_python_rejection() {
     new_case path-alternative
     make_python "$CASE_TOOLS/python3" "3.1.0" incompatible "unused" success ">=4; release Requires-Python >=5"
@@ -981,6 +1131,9 @@ for test_name in \
     test_poetry_array_source_marker_uses_native_resolver \
     test_uv_plugin_section_does_not_claim_plain_venv \
     test_managed_install_requires_consent_and_uses_uv \
+    test_declared_poetry_dependency_is_installed_without_readding \
+    test_poetry_install_plan_failure_does_not_mutate_project \
+    test_poetry_declared_sdk_downgrade_uses_install \
     test_managed_upgrade_uses_poetry_after_consent \
     test_managed_install_rejects_legacy_version_argument \
     test_managed_install_failure_preserves_environment \
@@ -1005,6 +1158,8 @@ for test_name in \
     test_invalid_arguments_do_not_modify_project \
     test_existing_compatible_venv_is_installed_in_place \
     test_base_without_pip_uses_policy_preserving_probe \
+    test_fresh_bootstrap_uses_venv_when_pip_requires_virtualenv \
+    test_old_ensurepip_probe_uses_vendored_toml \
     test_path_alternative_after_python_rejection \
     test_pip_21_macos_incompatibility_output_finds_alternative \
     test_current_pip_incompatibility_output_finds_alternative \

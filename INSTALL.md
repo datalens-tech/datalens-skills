@@ -21,6 +21,19 @@ npx skills add datalens-tech/datalens-skills --skill datalens-yc-rls-resolve
 - `--copy` — copy the files instead of symlinking into the agent's directory
 - `--list` — just list the skills in this repo without installing
 
+## Codex — native plugin
+
+Add this repository as a marketplace and install the plugin:
+
+```bash
+codex plugin marketplace add datalens-tech/datalens-skills
+codex plugin add datalens-skills@datalens
+```
+
+Start a new Codex session afterward so it discovers the installed skills. They are namespaced by
+the plugin, e.g. `datalens-skills:datalens-html-pages` and
+`datalens-skills:datalens-yc-rls-resolve`.
+
 ## Claude Code — native plugin
 
 If you prefer the built-in flow, this repo is also a Claude Code plugin marketplace:

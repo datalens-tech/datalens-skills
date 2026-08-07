@@ -33,6 +33,15 @@ npx skills add datalens-tech/datalens-skills --skill datalens-yc-rls-resolve
 Choose the skill you need. Add `--agent '*'` to install it into every agent you have, or `-g` for
 a global (all-projects) install.
 
+**Codex — native plugin.** Add this repository as a marketplace and install the plugin:
+
+```bash
+codex plugin marketplace add datalens-tech/datalens-skills
+codex plugin add datalens-skills@datalens
+```
+
+Start a new Codex session afterward so it discovers the installed skills.
+
 **Claude Code — native plugin.** If you prefer the built-in flow, this repo is also a plugin
 marketplace:
 

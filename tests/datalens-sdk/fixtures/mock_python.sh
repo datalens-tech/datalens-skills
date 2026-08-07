@@ -85,7 +85,26 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "venv" ]; then
 fi
 
 if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
+    printf '%s\n' "$*" >>"$MOCK_CALL_LOG"
     case "$*" in
+        *'index versions datalens-sdk'*)
+            case "$MOCK_INSTALL_MODE" in
+                success|fail_project_install|fail_project_break_sdk)
+                    printf 'datalens-sdk (%s)\n' "$MOCK_SDK_VERSION"
+                    printf 'Available versions: %s\n' "$MOCK_SDK_VERSION"
+                    exit 0
+                    ;;
+                incompatible)
+                    printf 'Link requires a different Python: release Requires-Python %s\n' "$MOCK_REQUIREMENTS" >&2
+                    printf 'ERROR: No matching distribution found for datalens-sdk\n' >&2
+                    exit 1
+                    ;;
+                fail)
+                    printf 'ERROR: package index is unavailable\n' >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
         *'--upgrade pip'*)
             if [ "$MOCK_PIP_UPGRADE_MODE" = "success" ]; then
                 printf 'Successfully installed pip\n'
@@ -94,7 +113,7 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
             printf 'ERROR: pip upgrade failed\n' >&2
             exit 1
             ;;
-        *'datalens-sdk'*)
+        *'pip install'*'datalens-sdk'*)
             MOCK_TARGET_SDK_VERSION="$MOCK_SDK_VERSION"
             for MOCK_ARG in "$@"; do
                 case "$MOCK_ARG" in

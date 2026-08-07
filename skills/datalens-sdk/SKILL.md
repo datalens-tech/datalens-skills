@@ -25,6 +25,9 @@ extended there by whatever DataLens installation the environment targets. The SD
 where minor releases rename classes and methods, so instructions that shipped separately would
 describe an API the user does not have. Load them from the package before doing anything else.
 
+If the user is only asking what the SDK is or whether it fits their task, answer that much from
+this file and stop. Do not run bootstrap or install a package merely to read its documentation.
+
 ## Bootstrap, then load the instructions
 
 Before the first SDK operation in a session, resolve this wrapper skill's directory to an absolute
@@ -34,21 +37,32 @@ path and run its bootstrap script **from the user's project directory**:
 bash "/absolute/path/to/datalens-sdk/scripts/bootstrap.sh"
 ```
 
-The script first reuses `./.venv`, then a uv- or Poetry-managed project environment when its
-project markers are present, and creates `./.venv` only when none exists. It verifies that every
-selected `bin/python` identifies itself as belonging to that virtual environment before invoking
-pip, so a stale symlink can never install into system Python. It may contact the configured Python
+The script resolves a uv- or Poetry-managed project before considering `./.venv`, because those
+tools commonly own a same-named environment. It creates `./.venv` only for an unmanaged project.
+It verifies that every selected `bin/python` identifies itself as belonging to that environment,
+so a stale symlink can never install into system Python. It may contact the configured Python
 package index and install `datalens-sdk` into the selected environment.
 
-The script deliberately does not encode an SDK version or a Python compatibility range. Instead,
-it lets pip select the newest stable SDK release compatible with each candidate interpreter and
-reads `Requires-Python` diagnostics when an interpreter is rejected. It upgrades pip only inside
-verified disposable probe environments, never inside an existing project environment.
+The script deliberately does not encode an SDK version or a Python compatibility range. It uses a
+non-installing package-index query to select the newest stable SDK release compatible with each
+candidate interpreter and reads `Requires-Python` diagnostics when an interpreter is rejected.
+Compatibility and freshness checks never upgrade pip or install the SDK or its dependencies.
 
 Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
 
 - `STATUS=ready` — use the absolute interpreter from `PYTHON` for every subsequent Python call.
 - `STATUS=decision_required` — do not load the package skill or perform SDK work yet:
+  - `REASON=sdk_install_required` — a uv/Poetry project needs `datalens-sdk` added to its managed
+    dependencies. Tell the user the exact `AVAILABLE_SDK_VERSION` and that the project manifest and
+    lock may change. If they approve, run the exact command below, then parse its result again:
+
+    ```bash
+    bash "/absolute/path/to/datalens-sdk/scripts/bootstrap.sh" \
+      --install-sdk "$AVAILABLE_SDK_VERSION"
+    ```
+
+    If that run reports `sdk_install_target_changed`, show the new version and ask again. Never
+    substitute `pip install` inside a managed project.
   - `REASON=sdk_update_available` — tell the user the installed `SDK_VERSION` and newer compatible
     `AVAILABLE_SDK_VERSION`, give a clickable `CHANGELOG_URL`, and explicitly ask whether to keep
     the installed version or upgrade. Match the user's language. If they keep it, continue with the
@@ -76,7 +90,11 @@ Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
   preserved and the user must decide how to handle it. For `venv_invalid`, do not use or repair the
   interpreter path automatically. For `managed_environment_unavailable` or
   `managed_environment_invalid`, preserve the uv/Poetry project and ask the user to repair or
-  select its managed environment; never create a parallel `.venv`.
+  select its managed environment; never create a parallel `.venv`. For
+  `managed_python_incompatible`, ask the user to change the manager-selected Python rather than
+  installing into a different environment. For `sdk_install_failed`, report that the managed
+  environment was preserved and ask whether to retry or inspect the manager error outside the
+  bootstrap protocol.
 
 For any unrecognized `decision_required` reason, stop and show the parsed fields instead of
 guessing. A decision applies only to this session; do not write an opt-out marker.
@@ -113,9 +131,6 @@ overlay wins. Read the references they route you to on demand, not all of them.
 
 Do not write SDK code, install anything, answer an SDK question, or commit to an approach before
 you have read it. A plausible guess at this API is worse than one extra command.
-
-If the user is only asking what the SDK is or whether it fits their task, answer that much from
-this file and stop — installing a package to read its documentation is not worth it.
 
 Anything that writes files writes to the user's project directory or a temp dir; the package
 directory may be read-only or root-owned.

@@ -2,19 +2,19 @@
 # Bootstrap datalens-sdk without encoding SDK or Python compatibility versions.
 #
 # Run from the user's project directory. The script:
-#   * reuses ./.venv or a uv/Poetry-managed project environment;
-#   * verifies environment identity before every pip invocation;
-#   * checks a working SDK against the newest compatible release;
-#   * asks its caller to obtain consent before upgrading an installed SDK;
-#   * otherwise lets pip resolve an unpinned datalens-sdk in disposable probes;
+#   * prefers a uv/Poetry-managed environment over a same-named ./.venv;
+#   * verifies environment identity before every project-environment mutation;
+#   * queries the package index without installing the SDK or its dependencies;
+#   * asks its caller to obtain consent before changing managed dependencies;
 #   * changes interpreter only after pip reports Requires-Python incompatibility;
 #   * creates ./.venv only after a compatible interpreter has been proven.
 #
 # Machine-readable output follows the ---BOOTSTRAP--- marker. The script always
-# exits zero; callers must act on STATUS. Pass --upgrade-sdk VERSION only after
-# the user approves the exact AVAILABLE_SDK_VERSION reported by a prior run.
+# exits zero; callers must act on STATUS. Pass --install-sdk VERSION or
+# --upgrade-sdk VERSION only after the user approves the exact
+# AVAILABLE_SDK_VERSION reported by a prior run.
 
-set -u
+set -uo pipefail
 
 BOOTSTRAP_CWD="$(pwd -P)"
 BOOTSTRAP_PROJECT_VENV="${BOOTSTRAP_CWD}/.venv"
@@ -150,12 +150,12 @@ bootstrap_find_managed_environment() {
     if [ -f "${BOOTSTRAP_CWD}/uv.lock" ] || [ -f "${BOOTSTRAP_CWD}/uv.toml" ] \
         || [ -n "${UV_PROJECT_ENVIRONMENT:-}" ] \
         || { [ -f "${BOOTSTRAP_CWD}/pyproject.toml" ] \
-            && grep -Eq '^[[:space:]]*\[tool\.uv' "${BOOTSTRAP_CWD}/pyproject.toml"; }; then
+            && grep -Eq '^[[:space:]]*\[tool\.uv([][.[:space:]])' "${BOOTSTRAP_CWD}/pyproject.toml"; }; then
         has_uv_project="yes"
     fi
     if [ -f "${BOOTSTRAP_CWD}/poetry.lock" ] \
         || { [ -f "${BOOTSTRAP_CWD}/pyproject.toml" ] \
-            && grep -Eq '^[[:space:]]*\[tool\.poetry' "${BOOTSTRAP_CWD}/pyproject.toml"; }; then
+            && grep -Eq '^[[:space:]]*\[tool\.poetry([][.[:space:]])' "${BOOTSTRAP_CWD}/pyproject.toml"; }; then
         has_poetry_project="yes"
     fi
 
@@ -184,9 +184,8 @@ bootstrap_sdk_version() {
 
 bootstrap_compare_versions() {
     # Set VERSION_RELATION to the second version's relation to the first.
-    # The disposable probe has a freshly upgraded pip, whose vendored
-    # packaging implementation gives us canonical PEP 440 ordering without
-    # adding a dependency to or upgrading the user's project environment.
+    # The disposable query environment's vendored packaging implementation
+    # gives us canonical PEP 440 ordering without changing the project.
     local first="$1"
     local second="$2"
     VERSION_RELATION=""
@@ -244,8 +243,7 @@ bootstrap_probe() {
     local base_python="$1"
     local probe_dir=""
     local probe_python=""
-    local upgrade_log=""
-    local install_log=""
+    local query_log=""
 
     PROBE_RESULT=""
     PROBE_PYTHON=""
@@ -277,32 +275,36 @@ bootstrap_probe() {
         return 0
     fi
 
-    upgrade_log="${probe_dir}/pip-upgrade.log"
-    if ! "$probe_python" -m pip install --disable-pip-version-check --no-input --upgrade pip >"$upgrade_log" 2>&1; then
-        PROBE_RESULT="failed"
-        PROBE_REASON="probe_pip_upgrade_failed"
-        return 0
-    fi
-
-    install_log="${probe_dir}/sdk-install.log"
-    if "$probe_python" -m pip install --disable-pip-version-check --no-input datalens-sdk >"$install_log" 2>&1; then
-        PROBE_SDK_VERSION="$(bootstrap_sdk_version "$probe_python")"
-        if [ -n "$PROBE_SDK_VERSION" ]; then
-            PROBE_RESULT="compatible"
-        else
+    query_log="${probe_dir}/sdk-index.log"
+    if "$probe_python" -m pip index versions datalens-sdk \
+        --disable-pip-version-check --no-input --no-color -v >"$query_log" 2>&1; then
+        PROBE_SDK_VERSION="$(awk '
+            /^datalens-sdk \([^()]+\)$/ {
+                value = $0
+                sub(/^datalens-sdk \(/, "", value)
+                sub(/\)$/, "", value)
+                if (value ~ /^[0-9A-Za-z][0-9A-Za-z.!+_-]*$/) {
+                    print value
+                    exit
+                }
+            }
+        ' "$query_log")"
+        if [ -z "$PROBE_SDK_VERSION" ]; then
             PROBE_RESULT="failed"
-            PROBE_REASON="package_install_failed"
+            PROBE_REASON="package_index_query_failed"
+            return 0
         fi
+        PROBE_RESULT="compatible"
         return 0
     fi
 
-    PROBE_REQUIREMENTS="$(bootstrap_extract_requirements "$install_log")"
+    PROBE_REQUIREMENTS="$(bootstrap_extract_requirements "$query_log")"
     if [ -n "$PROBE_REQUIREMENTS" ]; then
         PROBE_RESULT="incompatible"
         PROBE_REASON="python_incompatible"
     else
         PROBE_RESULT="failed"
-        PROBE_REASON="package_install_failed"
+        PROBE_REASON="package_index_query_failed"
     fi
 }
 
@@ -395,21 +397,36 @@ bootstrap_install_project() {
     local project_python="$1"
     local target_version="${2:-}"
     local install_log="${BOOTSTRAP_TMP_ROOT}/project-install.log"
-    local requirement="datalens-sdk"
+    local requirement="datalens-sdk==${target_version}"
     local action="Installing"
-    if [ -n "$target_version" ]; then
-        requirement="datalens-sdk==${target_version}"
-        action="Upgrading"
-    fi
+    [ "$BOOTSTRAP_ACTION" = "upgrade" ] && action="Upgrading"
+    [ -n "$target_version" ] || return 1
     if ! bootstrap_environment_identity "$project_python" "$BOOTSTRAP_VENV"; then
         BOOTSTRAP_REASON="venv_invalid"
         return 2
     fi
     bootstrap_note "${action} datalens-sdk into ${BOOTSTRAP_VENV}..."
-    if "$project_python" -m pip install --disable-pip-version-check --no-input --upgrade "$requirement" >"$install_log" 2>&1; then
-        BOOTSTRAP_SDK_VERSION="$(bootstrap_sdk_version "$project_python")"
-        [ -n "$BOOTSTRAP_SDK_VERSION" ] && return 0
-    fi
+    case "$MANAGED_SOURCE" in
+        uv)
+            uv add "$requirement" >"$install_log" 2>&1 || return 1
+            bootstrap_managed_python_info uv || return 1
+            project_python="$BOOTSTRAP_PYTHON"
+            ;;
+        poetry)
+            poetry add "$requirement" >"$install_log" 2>&1 || return 1
+            bootstrap_managed_python_info poetry || return 1
+            project_python="$BOOTSTRAP_PYTHON"
+            ;;
+        "")
+            "$project_python" -m pip install --disable-pip-version-check --no-input --upgrade "$requirement" >"$install_log" 2>&1 || {
+                bootstrap_merge_requirements "$(bootstrap_extract_requirements "$install_log")"
+                return 1
+            }
+            ;;
+        *) return 1 ;;
+    esac
+    BOOTSTRAP_SDK_VERSION="$(bootstrap_sdk_version "$project_python")"
+    [ "$BOOTSTRAP_SDK_VERSION" = "$target_version" ] && return 0
     bootstrap_merge_requirements "$(bootstrap_extract_requirements "$install_log")"
     return 1
 }
@@ -422,17 +439,32 @@ bootstrap_emit_version_decision() {
     bootstrap_emit
 }
 
+bootstrap_emit_install_decision() {
+    BOOTSTRAP_VENV_STATE="reused"
+    BOOTSTRAP_SDK="missing"
+    BOOTSTRAP_REASON="$1"
+    BOOTSTRAP_STATUS="decision_required"
+    bootstrap_emit
+}
+
 case "$#" in
     0) : ;;
     2)
-        if [ "$1" = "--upgrade-sdk" ] && [ -n "$2" ]; then
-            BOOTSTRAP_ACTION="upgrade"
-            BOOTSTRAP_EXPECTED_SDK_VERSION="$2"
-        else
+        case "$1" in
+            --install-sdk) BOOTSTRAP_ACTION="install" ;;
+            --upgrade-sdk) BOOTSTRAP_ACTION="upgrade" ;;
+            *)
+                BOOTSTRAP_REASON="invalid_arguments"
+                bootstrap_emit
+                exit 0
+                ;;
+        esac
+        [ -n "$2" ] || {
             BOOTSTRAP_REASON="invalid_arguments"
             bootstrap_emit
             exit 0
-        fi
+        }
+        BOOTSTRAP_EXPECTED_SDK_VERSION="$2"
         ;;
     *)
         BOOTSTRAP_REASON="invalid_arguments"
@@ -447,26 +479,24 @@ BOOTSTRAP_TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/datalens-sdk-bootstrap.XXXXXX")
     exit 0
 }
 
-if [ ! -d "$BOOTSTRAP_PROJECT_VENV" ]; then
-    bootstrap_find_managed_environment
-    case "$MANAGED_RESULT" in
-        found)
-            BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
-            ;;
-        unavailable)
-            BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
-            BOOTSTRAP_REASON="managed_environment_unavailable"
-            bootstrap_emit
-            exit 0
-            ;;
-        invalid)
-            BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
-            BOOTSTRAP_REASON="managed_environment_invalid"
-            bootstrap_emit
-            exit 0
-            ;;
-    esac
-fi
+bootstrap_find_managed_environment
+case "$MANAGED_RESULT" in
+    found)
+        BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
+        ;;
+    unavailable)
+        BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
+        BOOTSTRAP_REASON="managed_environment_unavailable"
+        bootstrap_emit
+        exit 0
+        ;;
+    invalid)
+        BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
+        BOOTSTRAP_REASON="managed_environment_invalid"
+        bootstrap_emit
+        exit 0
+        ;;
+esac
 
 # Reuse a valid project environment only after checking whether the configured
 # package index offers a newer stable release compatible with its interpreter.
@@ -516,6 +546,12 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
             exit 0
         fi
         INSTALLED_AVAILABLE_RELATION="$VERSION_RELATION"
+
+        if [ "$BOOTSTRAP_ACTION" = "install" ]; then
+            BOOTSTRAP_REASON="install_requires_missing_sdk"
+            bootstrap_emit
+            exit 0
+        fi
 
         if [ "$BOOTSTRAP_ACTION" = "upgrade" ]; then
             if ! bootstrap_compare_versions "$BOOTSTRAP_EXPECTED_SDK_VERSION" "$BOOTSTRAP_AVAILABLE_SDK_VERSION"; then
@@ -587,13 +623,43 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
     bootstrap_merge_requirements "$PROBE_REQUIREMENTS"
     case "$PROBE_RESULT" in
         compatible)
-            if bootstrap_install_project "$BOOTSTRAP_PYTHON"; then
+            BOOTSTRAP_AVAILABLE_SDK_VERSION="$PROBE_SDK_VERSION"
+            if [ -n "$MANAGED_SOURCE" ]; then
+                if [ "$BOOTSTRAP_ACTION" = "upgrade" ]; then
+                    BOOTSTRAP_REASON="upgrade_requires_installed_sdk"
+                    bootstrap_emit
+                    exit 0
+                fi
+                if [ "$BOOTSTRAP_ACTION" = "check" ]; then
+                    bootstrap_emit_install_decision "sdk_install_required"
+                    exit 0
+                fi
+                if ! bootstrap_compare_versions "$BOOTSTRAP_EXPECTED_SDK_VERSION" "$BOOTSTRAP_AVAILABLE_SDK_VERSION"; then
+                    bootstrap_emit_install_decision "sdk_version_check_failed"
+                    exit 0
+                fi
+                if [ "$VERSION_RELATION" != "equal" ]; then
+                    bootstrap_emit_install_decision "sdk_install_target_changed"
+                    exit 0
+                fi
+            elif [ "$BOOTSTRAP_ACTION" = "install" ]; then
+                BOOTSTRAP_REASON="install_requires_managed_environment"
+                bootstrap_emit
+                exit 0
+            fi
+            if bootstrap_install_project "$BOOTSTRAP_PYTHON" "$BOOTSTRAP_AVAILABLE_SDK_VERSION"; then
                 BOOTSTRAP_VENV_STATE="reused"
                 BOOTSTRAP_SDK="installed_now"
                 BOOTSTRAP_STATUS="ready"
             else
-                BOOTSTRAP_VENV_STATE="failed"
-                [ -n "$BOOTSTRAP_REASON" ] || BOOTSTRAP_REASON="package_install_failed"
+                if [ -n "$MANAGED_SOURCE" ]; then
+                    BOOTSTRAP_VENV_STATE="reused"
+                    BOOTSTRAP_SDK="missing"
+                    [ -n "$BOOTSTRAP_REASON" ] || BOOTSTRAP_REASON="sdk_install_failed"
+                else
+                    BOOTSTRAP_VENV_STATE="failed"
+                    [ -n "$BOOTSTRAP_REASON" ] || BOOTSTRAP_REASON="package_install_failed"
+                fi
             fi
             bootstrap_emit
             exit 0
@@ -605,6 +671,12 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
             exit 0
             ;;
         incompatible)
+            if [ -n "$MANAGED_SOURCE" ]; then
+                BOOTSTRAP_VENV_STATE="incompatible"
+                BOOTSTRAP_REASON="managed_python_incompatible"
+                bootstrap_emit
+                exit 0
+            fi
             if bootstrap_find_compatible_alternative "$CANDIDATE_CANONICAL"; then
                 BOOTSTRAP_VENV_STATE="incompatible"
                 BOOTSTRAP_AVAILABLE_PYTHON="$CANDIDATE_PATH"
@@ -620,8 +692,12 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
     esac
 fi
 
-if [ "$BOOTSTRAP_ACTION" = "upgrade" ]; then
-    BOOTSTRAP_REASON="upgrade_requires_installed_sdk"
+if [ "$BOOTSTRAP_ACTION" != "check" ]; then
+    if [ "$BOOTSTRAP_ACTION" = "upgrade" ]; then
+        BOOTSTRAP_REASON="upgrade_requires_installed_sdk"
+    else
+        BOOTSTRAP_REASON="install_requires_managed_environment"
+    fi
     bootstrap_emit
     exit 0
 fi
@@ -663,6 +739,7 @@ fi
 
 BOOTSTRAP_PYTHON_VERSION="$CANDIDATE_VERSION"
 BOOTSTRAP_PYTHON_SOURCE="$CANDIDATE_SOURCE"
+BOOTSTRAP_AVAILABLE_SDK_VERSION="$PROBE_SDK_VERSION"
 bootstrap_note "Creating project .venv with Python ${CANDIDATE_VERSION}..."
 if ! "$CANDIDATE_PATH" -m venv "$BOOTSTRAP_VENV" >/dev/null 2>&1; then
     [ ! -d "$BOOTSTRAP_VENV" ] || rm -rf -- "$BOOTSTRAP_VENV"
@@ -678,7 +755,7 @@ if [ ! -x "$BOOTSTRAP_PYTHON" ]; then
     PROJECT_INSTALL_REASON="venv_invalid"
 elif ! bootstrap_environment_identity "$BOOTSTRAP_PYTHON" "$BOOTSTRAP_VENV"; then
     PROJECT_INSTALL_REASON="venv_invalid"
-elif ! bootstrap_install_project "$BOOTSTRAP_PYTHON"; then
+elif ! bootstrap_install_project "$BOOTSTRAP_PYTHON" "$BOOTSTRAP_AVAILABLE_SDK_VERSION"; then
     PROJECT_INSTALL_REASON="${BOOTSTRAP_REASON:-package_install_failed}"
 fi
 if [ -n "$PROJECT_INSTALL_REASON" ]; then

@@ -43,26 +43,27 @@ It verifies that every selected `bin/python` identifies itself as belonging to t
 so a stale symlink can never install into system Python. It may contact the configured Python
 package index and install `datalens-sdk` into the selected environment.
 
-The script deliberately does not encode an SDK version or a Python compatibility range. It uses a
-non-installing package-index query to select the newest stable SDK release compatible with each
-candidate interpreter and reads `Requires-Python` diagnostics when an interpreter is rejected.
-Compatibility and freshness checks never upgrade pip or install the SDK or its dependencies.
+The script deliberately does not encode an SDK version or a Python compatibility range. Plain
+environments query through the selected interpreter's pip configuration; uv and Poetry projects
+resolve through their native project sources. Candidate selection intersects the SDK metadata with
+`PROJECT_REQUIRES_PYTHON` and a numeric `.python-version` pin when present. Compatibility and
+freshness checks never upgrade pip or install the SDK or its dependencies.
 
 Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
 
 - `STATUS=ready` — use the absolute interpreter from `PYTHON` for every subsequent Python call.
 - `STATUS=decision_required` — do not load the package skill or perform SDK work yet:
   - `REASON=sdk_install_required` — a uv/Poetry project needs `datalens-sdk` added to its managed
-    dependencies. Tell the user the exact `AVAILABLE_SDK_VERSION` and that the project manifest and
-    lock may change. If they approve, run the exact command below, then parse its result again:
+    dependencies. Explain that the manager will select the exact version from the project's sources
+    and Python constraints, and that the project manifest and lock may change. No
+    `AVAILABLE_SDK_VERSION` is expected before this consent. If they approve, run the exact command
+    below, then parse its result again:
 
     ```bash
-    bash "/absolute/path/to/datalens-sdk/scripts/bootstrap.sh" \
-      --install-sdk "$AVAILABLE_SDK_VERSION"
+    bash "/absolute/path/to/datalens-sdk/scripts/bootstrap.sh" --install-sdk
     ```
 
-    If that run reports `sdk_install_target_changed`, show the new version and ask again. Never
-    substitute `pip install` inside a managed project.
+    Never substitute `pip install` inside a managed project.
   - `REASON=sdk_update_available` — tell the user the installed `SDK_VERSION` and newer compatible
     `AVAILABLE_SDK_VERSION`, give a clickable `CHANGELOG_URL`, and explicitly ask whether to keep
     the installed version or upgrade. Match the user's language. If they keep it, continue with the
@@ -79,9 +80,10 @@ Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
   - `REASON=sdk_upgrade_target_unavailable` — the approved version is no longer the compatible
     release offered by the index, and bootstrap will not downgrade or guess. Ask whether to keep
     the installed version or retry the original check later.
-  - `REASON=sdk_version_check_failed` — explain that the installed SDK works but its freshness
-    could not be verified. Ask whether to continue with `SDK_VERSION` or retry the original
-    bootstrap command. Do not silently continue or describe it as current.
+  - `REASON=sdk_version_check_failed` with `SDK=installed` — explain that the installed SDK works
+    but its freshness could not be verified. Ask whether to continue with the reported
+    `SDK_VERSION` or retry the original bootstrap command. Do not silently continue or describe it
+    as current. This reason never applies to `SDK=missing`.
   - `REASON=sdk_upgrade_failed` with `SDK=installed` — explain that the upgrade failed but the
     reported `SDK_VERSION` remains usable. Ask whether to continue with it or stop; retry the exact
     upgrade command only if the user requests it.
@@ -92,9 +94,13 @@ Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
   `managed_environment_invalid`, preserve the uv/Poetry project and ask the user to repair or
   select its managed environment; never create a parallel `.venv`. For
   `managed_python_incompatible`, ask the user to change the manager-selected Python rather than
-  installing into a different environment. For `sdk_install_failed`, report that the managed
-  environment was preserved and ask whether to retry or inspect the manager error outside the
-  bootstrap protocol.
+  installing into a different environment. For `configured_python_unavailable`, ask the user to
+  install or change the numeric versions in `CONFIGURED_PYTHON`; for
+  `configured_python_incompatible`, explain that the configured interpreter does not satisfy the
+  intersection of `PROJECT_REQUIRES_PYTHON` and `REQUIRES_PYTHON`. For
+  `project_python_constraint_invalid` or `project_metadata_unreadable`, ask the user to repair
+  `pyproject.toml`. For `sdk_install_failed`, report that the managed environment was preserved and
+  ask whether to retry or inspect the manager error outside the bootstrap protocol.
 
 For any unrecognized `decision_required` reason, stop and show the parsed fields instead of
 guessing. A decision applies only to this session; do not write an opt-out marker.

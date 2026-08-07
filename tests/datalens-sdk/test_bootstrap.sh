@@ -33,7 +33,7 @@ make_tools() {
     local tool=""
     local tool_path=""
     mkdir -p "$tools_dir"
-    for tool in awk chmod cp grep mkdir mktemp paste rm sort touch tr; do
+    for tool in awk cat chmod cp grep mkdir mktemp paste rm sort touch tr; do
         tool_path="$(command -v "$tool")"
         ln -s "$tool_path" "${tools_dir}/${tool}"
     done
@@ -51,6 +51,9 @@ make_python() {
     local installed_sdk_version="${9:-$sdk_version}"
     local version_relation="${10:-newer}"
     local env_identity="${11:-valid}"
+    local project_python_result="${12:-compatible}"
+    local project_requires_python="${13:-}"
+    local pip_output_fixture="${14:-}"
 
     mkdir -p "$(dirname "$python_path")"
     cp "${TEST_ROOT}/tests/datalens-sdk/fixtures/mock_python.sh" "$python_path"
@@ -65,8 +68,13 @@ make_python() {
         printf 'MOCK_INSTALLED_SDK_VERSION=%q\n' "$installed_sdk_version"
         printf 'MOCK_VERSION_RELATION=%q\n' "$version_relation"
         printf 'MOCK_ENV_IDENTITY=%q\n' "$env_identity"
+        printf 'MOCK_PROJECT_PYTHON_RESULT=%q\n' "$project_python_result"
+        printf 'MOCK_PROJECT_REQUIRES_PYTHON=%q\n' "$project_requires_python"
+        printf 'MOCK_PIP_OUTPUT_FIXTURE=%q\n' "$pip_output_fixture"
         printf 'MOCK_CALL_LOG=%q\n' "${CASE_DIR}/python-calls"
     } >"${python_path}.config"
+    MOCK_MANAGER_AVAILABLE_VERSION="$sdk_version"
+    export MOCK_MANAGER_AVAILABLE_VERSION
     if [ "$installed" = "yes" ]; then
         printf '%s\n' "$installed_sdk_version" >"${python_path}.sdk-installed"
     fi
@@ -101,11 +109,22 @@ case "${1:-}" in
         shift 3
         exec "${MOCK_UV_PYTHON:?}" "$@"
         ;;
+    lock)
+        printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
+        [ "${MOCK_MANAGER_RESOLVE_MODE:-success}" = "success" ] || exit 1
+        current="$(<"${MOCK_UV_PYTHON:?}.sdk-installed")"
+        if [ "$current" != "${MOCK_MANAGER_AVAILABLE_VERSION:?}" ]; then
+            printf 'Updated datalens-sdk v%s -> v%s\n' "$current" "$MOCK_MANAGER_AVAILABLE_VERSION"
+        else
+            printf 'Resolved project without changes\n'
+        fi
+        ;;
     add)
         printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
         [ "${MOCK_MANAGER_ADD_MODE:-success}" = "success" ] || exit 1
         case "${2:-}" in
             datalens-sdk==*) printf '%s\n' "${2#datalens-sdk==}" >"${MOCK_UV_PYTHON:?}.sdk-installed" ;;
+            datalens-sdk) printf '%s\n' "${MOCK_MANAGER_AVAILABLE_VERSION:?}" >"${MOCK_UV_PYTHON:?}.sdk-installed" ;;
             *) exit 1 ;;
         esac
         ;;
@@ -127,9 +146,20 @@ case "${1:-}" in
         ;;
     add)
         printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
+        if [ "${2:-}" = "--dry-run" ]; then
+            [ "${MOCK_MANAGER_RESOLVE_MODE:-success}" = "success" ] || exit 1
+            current="$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")"
+            if [ "$current" != "${MOCK_MANAGER_AVAILABLE_VERSION:?}" ]; then
+                printf '  - Updating datalens-sdk (%s -> %s)\n' "$current" "$MOCK_MANAGER_AVAILABLE_VERSION"
+            else
+                printf 'No dependencies to install or update\n'
+            fi
+            exit 0
+        fi
         [ "${MOCK_MANAGER_ADD_MODE:-success}" = "success" ] || exit 1
         case "${2:-}" in
             datalens-sdk==*) printf '%s\n' "${2#datalens-sdk==}" >"${MOCK_POETRY_PYTHON:?}.sdk-installed" ;;
+            datalens-sdk) printf '%s\n' "${MOCK_MANAGER_AVAILABLE_VERSION:?}" >"${MOCK_POETRY_PYTHON:?}.sdk-installed" ;;
             *) exit 1 ;;
         esac
         ;;
@@ -150,8 +180,11 @@ new_case() {
     mkdir -p "$CASE_PROJECT" "$CASE_TMP"
     make_tools "$CASE_TOOLS"
     MOCK_MANAGER_LOG="${CASE_DIR}/manager-calls"
+    : >"${CASE_DIR}/python-calls"
     MOCK_MANAGER_ADD_MODE="success"
-    export MOCK_MANAGER_LOG MOCK_MANAGER_ADD_MODE
+    MOCK_MANAGER_RESOLVE_MODE="success"
+    MOCK_MANAGER_AVAILABLE_VERSION="9.9.0"
+    export MOCK_MANAGER_LOG MOCK_MANAGER_ADD_MODE MOCK_MANAGER_RESOLVE_MODE MOCK_MANAGER_AVAILABLE_VERSION
     unset MOCK_PYENV_VERSION MOCK_PYENV_PREFIX MOCK_UV_PYTHON MOCK_POETRY_PYTHON || true
 }
 
@@ -217,6 +250,66 @@ test_poetry_managed_environment_is_reused() {
     [ -e "$CASE_PROJECT/.venv/bin/python" ] || fail "bootstrap did not preserve the Poetry-owned .venv"
 }
 
+test_uv_marker_only_is_detected_with_bsd_grep() {
+    new_case uv-marker-only
+    printf '%s\n' '[tool.uv]' >"$CASE_PROJECT/pyproject.toml"
+    MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_UV_PYTHON
+    make_python "$MOCK_UV_PYTHON" "7.4.2" success "9.8.7" success ">=3" yes
+    make_uv "$CASE_TOOLS/uv"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "PYTHON_SOURCE=uv"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+}
+
+test_poetry_marker_only_is_detected_with_bsd_grep() {
+    new_case poetry-marker-only
+    printf '%s\n' '[tool.poetry]' >"$CASE_PROJECT/pyproject.toml"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_POETRY_PYTHON
+    make_python "$MOCK_POETRY_PYTHON" "7.4.2" success "9.8.7" success ">=3" yes
+    make_poetry "$CASE_TOOLS/poetry"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "PYTHON_SOURCE=poetry"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+}
+
+test_uv_array_source_marker_uses_native_resolver() {
+    local manifest_before=""
+    new_case uv-array-source
+    printf '%s\n' '[[tool.uv.index]]' 'name = "private"' 'url = "https://packages.example/simple"' >"$CASE_PROJECT/pyproject.toml"
+    manifest_before="$(<"$CASE_PROJECT/pyproject.toml")"
+    MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_UV_PYTHON
+    make_python "$MOCK_UV_PYTHON" "7.4.2" success "11.0.0" success ">=3" yes success "10.0.0" newer
+    make_uv "$CASE_TOOLS/uv"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "AVAILABLE_SDK_VERSION=11.0.0"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_update_available"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "lock --dry-run --upgrade-package datalens-sdk"
+    assert_not_contains "$(<"$CASE_DIR/python-calls")" "pip index versions datalens-sdk"
+    [ "$(<"$CASE_PROJECT/pyproject.toml")" = "$manifest_before" ] || fail "uv freshness changed pyproject.toml"
+    [ ! -e "$CASE_PROJECT/uv.lock" ] || fail "uv freshness wrote a lockfile"
+}
+
+test_poetry_array_source_marker_uses_native_resolver() {
+    local manifest_before=""
+    new_case poetry-array-source
+    printf '%s\n' '[[tool.poetry.source]]' 'name = "private"' 'url = "https://packages.example/simple"' >"$CASE_PROJECT/pyproject.toml"
+    manifest_before="$(<"$CASE_PROJECT/pyproject.toml")"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_POETRY_PYTHON
+    make_python "$MOCK_POETRY_PYTHON" "7.4.2" success "11.0.0" success ">=3" yes success "10.0.0" newer
+    make_poetry "$CASE_TOOLS/poetry"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "AVAILABLE_SDK_VERSION=11.0.0"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_update_available"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "add --dry-run --no-interaction --no-ansi datalens-sdk@latest"
+    assert_not_contains "$(<"$CASE_DIR/python-calls")" "pip index versions datalens-sdk"
+    [ "$(<"$CASE_PROJECT/pyproject.toml")" = "$manifest_before" ] || fail "Poetry freshness changed pyproject.toml"
+    [ ! -e "$CASE_PROJECT/poetry.lock" ] || fail "Poetry freshness wrote a lockfile"
+}
+
 test_uv_plugin_section_does_not_claim_plain_venv() {
     new_case uv-plugin-section
     printf '%s\n' '[tool.uv-dynamic-versioning]' >"$CASE_PROJECT/pyproject.toml"
@@ -236,17 +329,17 @@ test_managed_install_requires_consent_and_uses_uv() {
     make_uv "$CASE_TOOLS/uv"
 
     run_bootstrap
-    assert_contains "$CASE_OUTPUT" "AVAILABLE_SDK_VERSION=9.9.0"
     assert_contains "$CASE_OUTPUT" "REASON=sdk_install_required"
     assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
+    assert_not_contains "$CASE_OUTPUT" "AVAILABLE_SDK_VERSION="
     [ ! -e "$MOCK_UV_PYTHON.sdk-installed" ] || fail "managed SDK was installed without consent"
     [ ! -s "$MOCK_MANAGER_LOG" ] || fail "uv add ran without consent"
 
-    run_bootstrap --install-sdk 9.9.0
+    run_bootstrap --install-sdk
     assert_contains "$CASE_OUTPUT" "SDK=installed_now"
     assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.9.0"
     assert_contains "$CASE_OUTPUT" "STATUS=ready"
-    assert_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk==9.9.0"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
 }
 
 test_managed_upgrade_uses_poetry_after_consent() {
@@ -259,7 +352,7 @@ test_managed_upgrade_uses_poetry_after_consent() {
 
     run_bootstrap
     assert_contains "$CASE_OUTPUT" "REASON=sdk_update_available"
-    [ ! -s "$MOCK_MANAGER_LOG" ] || fail "poetry add ran without consent"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk=="
 
     run_bootstrap --upgrade-sdk 9.9.0
     assert_contains "$CASE_OUTPUT" "SDK=upgraded"
@@ -268,8 +361,8 @@ test_managed_upgrade_uses_poetry_after_consent() {
     assert_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk==9.9.0"
 }
 
-test_managed_install_target_change_requires_fresh_consent() {
-    new_case uv-install-target-changed
+test_managed_install_rejects_legacy_version_argument() {
+    new_case uv-install-legacy-argument
     touch "$CASE_PROJECT/uv.lock"
     MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
     export MOCK_UV_PYTHON
@@ -277,10 +370,9 @@ test_managed_install_target_change_requires_fresh_consent() {
     make_uv "$CASE_TOOLS/uv"
 
     run_bootstrap --install-sdk 9.9.0
-    assert_contains "$CASE_OUTPUT" "AVAILABLE_SDK_VERSION=10.0.0"
-    assert_contains "$CASE_OUTPUT" "REASON=sdk_install_target_changed"
-    assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
-    [ ! -s "$MOCK_MANAGER_LOG" ] || fail "stale install consent changed managed dependencies"
+    assert_contains "$CASE_OUTPUT" "REASON=invalid_arguments"
+    assert_contains "$CASE_OUTPUT" "STATUS=blocked"
+    [ ! -s "$MOCK_MANAGER_LOG" ] || fail "legacy install form changed managed dependencies"
 }
 
 test_managed_install_failure_preserves_environment() {
@@ -294,7 +386,7 @@ test_managed_install_failure_preserves_environment() {
     MOCK_MANAGER_ADD_MODE="fail"
     export MOCK_MANAGER_ADD_MODE
 
-    run_bootstrap --install-sdk 9.9.0
+    run_bootstrap --install-sdk
     assert_contains "$CASE_OUTPUT" "VENV=reused"
     assert_contains "$CASE_OUTPUT" "SDK=missing"
     assert_contains "$CASE_OUTPUT" "REASON=sdk_install_failed"
@@ -340,6 +432,18 @@ test_existing_current_sdk_is_reused_after_check() {
     assert_contains "$(<"$CASE_DIR/python-calls")" "pip index versions datalens-sdk"
     assert_not_contains "$(<"$CASE_DIR/python-calls")" "pip install"
     assert_not_contains "$(<"$CASE_DIR/python-calls")" "--upgrade pip"
+}
+
+test_existing_venv_uses_its_own_pip_policy() {
+    local expected_project=""
+    new_case selected-pip-policy
+    mkdir -p "$CASE_PROJECT/.venv"
+    expected_project="$(cd "$CASE_PROJECT" && pwd -P)"
+    printf '%s\n' '[global]' 'index-url = https://packages.example/simple' >"$CASE_PROJECT/.venv/pip.conf"
+    make_python "$CASE_PROJECT/.venv/bin/python" "7.4.2" success "9.8.7" success ">=3" yes
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$CASE_DIR/python-calls")" "$expected_project/.venv/bin/python -m pip index versions datalens-sdk"
 }
 
 test_existing_older_sdk_requires_decision_without_mutation() {
@@ -490,6 +594,96 @@ test_path_alternative_after_python_rejection() {
     assert_contains "$CASE_OUTPUT" "STATUS=ready"
 }
 
+test_pip_21_macos_incompatibility_output_finds_alternative() {
+    local fixture="$TEST_ROOT/tests/datalens-sdk/fixtures/pip-21.2.4-python-incompatible.txt"
+    new_case pip-21-macos
+    make_python "$CASE_TOOLS/python3" "3.9.6" incompatible_fixture unused success unused no success unused newer valid compatible "" "$fixture"
+    make_python "$CASE_TOOLS/python3.13" "3.13.6" success "9.9.0"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "PYTHON_VERSION=3.13.6"
+    assert_contains "$CASE_OUTPUT" "REQUIRES_PYTHON=>=3.10"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+}
+
+test_current_pip_incompatibility_output_finds_alternative() {
+    local fixture="$TEST_ROOT/tests/datalens-sdk/fixtures/pip-26.0.1-python-incompatible.txt"
+    new_case pip-current
+    make_python "$CASE_TOOLS/python3" "3.9.0" incompatible_fixture unused success unused no success unused newer valid compatible "" "$fixture"
+    make_python "$CASE_TOOLS/python3.12" "3.12.11" success "9.9.0"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "PYTHON_VERSION=3.12.11"
+    assert_contains "$CASE_OUTPUT" "REQUIRES_PYTHON=>=3.10"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+}
+
+test_requires_python_space_format_is_recognized() {
+    local fixture="$TEST_ROOT/tests/datalens-sdk/fixtures/pip-requires-python-python-incompatible.txt"
+    new_case pip-requires-python-space
+    make_python "$CASE_TOOLS/python3" "3.9.0" incompatible_fixture unused success unused no success unused newer valid compatible "" "$fixture"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "REQUIRES_PYTHON=>=3.10"
+    assert_contains "$CASE_OUTPUT" "REASON=no_compatible_python"
+}
+
+test_project_requires_python_selects_intersection() {
+    new_case project-requires-python
+    printf '%s\n' '[project]' 'requires-python = ">=3.10,<3.14"' >"$CASE_PROJECT/pyproject.toml"
+    make_python "$CASE_TOOLS/python3" "3.14.0" success "9.9.0" success ">=3" no success "9.9.0" newer valid incompatible ">=3.10,<3.14"
+    make_python "$CASE_TOOLS/python3.13" "3.13.6" success "9.9.0" success ">=3" no success "9.9.0" newer valid compatible ">=3.10,<3.14"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "PYTHON_VERSION=3.13.6"
+    assert_contains "$CASE_OUTPUT" "PROJECT_REQUIRES_PYTHON=>=3.10,<3.14"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_not_contains "$(<"$CASE_DIR/python-calls")" "$CASE_TOOLS/python3 -m pip index versions datalens-sdk"
+}
+
+test_python_version_pin_is_not_overridden() {
+    new_case configured-python
+    printf '%s\n' '3.12' >"$CASE_PROJECT/.python-version"
+    make_python "$CASE_TOOLS/python3" "3.14.0" success "9.9.0"
+    make_python "$CASE_TOOLS/python3.13" "3.13.6" success "9.9.0"
+    make_python "$CASE_TOOLS/python3.12" "3.12.11" success "9.9.0"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "CONFIGURED_PYTHON=3.12"
+    assert_contains "$CASE_OUTPUT" "PYTHON_VERSION=3.12.11"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+}
+
+test_unavailable_python_version_pin_blocks_creation() {
+    new_case configured-python-unavailable
+    printf '%s\n' '3.12' >"$CASE_PROJECT/.python-version"
+    make_python "$CASE_TOOLS/python3" "3.14.0" success "9.9.0"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "CONFIGURED_PYTHON=3.12"
+    assert_contains "$CASE_OUTPUT" "REASON=configured_python_unavailable"
+    assert_contains "$CASE_OUTPUT" "STATUS=blocked"
+    [ ! -e "$CASE_PROJECT/.venv" ] || fail "unavailable configured Python created a venv"
+}
+
+test_non_numeric_python_version_pin_blocks_creation() {
+    new_case configured-python-non-numeric
+    printf '%s\n' '3.bad.12' >"$CASE_PROJECT/.python-version"
+    make_python "$CASE_TOOLS/python3" "3.12.11" success "9.9.0"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "CONFIGURED_PYTHON=3.bad.12"
+    assert_contains "$CASE_OUTPUT" "REASON=configured_python_unavailable"
+    assert_contains "$CASE_OUTPUT" "STATUS=blocked"
+    [ ! -e "$CASE_PROJECT/.venv" ] || fail "non-numeric configured Python created a venv"
+}
+
+test_incompatible_python_version_pin_blocks_creation() {
+    new_case configured-python-incompatible
+    printf '%s\n' '3.14' >"$CASE_PROJECT/.python-version"
+    printf '%s\n' '[project]' 'requires-python = "<3.14"' >"$CASE_PROJECT/pyproject.toml"
+    make_python "$CASE_TOOLS/python3" "3.14.0" success "9.9.0" success ">=3" no success "9.9.0" newer valid incompatible "<3.14"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "CONFIGURED_PYTHON=3.14"
+    assert_contains "$CASE_OUTPUT" "PROJECT_REQUIRES_PYTHON=<3.14"
+    assert_contains "$CASE_OUTPUT" "REASON=configured_python_incompatible"
+    assert_contains "$CASE_OUTPUT" "STATUS=blocked"
+    [ ! -e "$CASE_PROJECT/.venv" ] || fail "incompatible configured Python created a venv"
+}
+
 test_pyenv_alternative_after_python_rejection() {
     new_case pyenv-alternative
     make_python "$CASE_TOOLS/python3" "3.2.0" incompatible "unused" success ">=7"
@@ -614,13 +808,22 @@ test_skill_documents_consent_protocol() {
         'REASON=sdk_upgrade_target_unavailable' \
         'managed_environment_unavailable' \
         'managed_environment_invalid' \
+        'configured_python_unavailable' \
+        'configured_python_incompatible' \
+        'PROJECT_REQUIRES_PYTHON' \
         'venv_invalid' \
         'CHANGELOG_URL' \
-        '--install-sdk "$AVAILABLE_SDK_VERSION"' \
+        '--install-sdk' \
         '--upgrade-sdk "$AVAILABLE_SDK_VERSION"'
     do
         grep -Fq -- "$required_text" "$skill_file" || fail "skill omits bootstrap contract: $required_text"
     done
+}
+
+test_sdk_version_check_failure_requires_installed_sdk() {
+    if grep -Fq -- 'bootstrap_emit_install_decision "sdk_version_check_failed"' "$BOOTSTRAP_SCRIPT"; then
+        fail "sdk_version_check_failed must not be emitted for a missing SDK"
+    fi
 }
 
 test_informational_guard_precedes_bootstrap() {
@@ -638,14 +841,19 @@ for test_name in \
     test_environment_identity_is_rechecked_before_project_pip \
     test_uv_managed_environment_is_reused \
     test_poetry_managed_environment_is_reused \
+    test_uv_marker_only_is_detected_with_bsd_grep \
+    test_poetry_marker_only_is_detected_with_bsd_grep \
+    test_uv_array_source_marker_uses_native_resolver \
+    test_poetry_array_source_marker_uses_native_resolver \
     test_uv_plugin_section_does_not_claim_plain_venv \
     test_managed_install_requires_consent_and_uses_uv \
     test_managed_upgrade_uses_poetry_after_consent \
-    test_managed_install_target_change_requires_fresh_consent \
+    test_managed_install_rejects_legacy_version_argument \
     test_managed_install_failure_preserves_environment \
     test_managed_project_without_tool_is_preserved \
     test_invalid_managed_environment_is_preserved \
     test_existing_current_sdk_is_reused_after_check \
+    test_existing_venv_uses_its_own_pip_policy \
     test_existing_older_sdk_requires_decision_without_mutation \
     test_approved_upgrade_installs_exact_reported_version \
     test_changed_available_version_requires_fresh_decision \
@@ -660,6 +868,14 @@ for test_name in \
     test_invalid_arguments_do_not_modify_project \
     test_existing_compatible_venv_is_installed_in_place \
     test_path_alternative_after_python_rejection \
+    test_pip_21_macos_incompatibility_output_finds_alternative \
+    test_current_pip_incompatibility_output_finds_alternative \
+    test_requires_python_space_format_is_recognized \
+    test_project_requires_python_selects_intersection \
+    test_python_version_pin_is_not_overridden \
+    test_unavailable_python_version_pin_blocks_creation \
+    test_non_numeric_python_version_pin_blocks_creation \
+    test_incompatible_python_version_pin_blocks_creation \
     test_pyenv_alternative_after_python_rejection \
     test_broken_default_shim_does_not_hide_later_python \
     test_non_python_error_does_not_cycle \
@@ -671,6 +887,7 @@ for test_name in \
     test_project_path_with_spaces \
     test_no_static_version_pins \
     test_skill_documents_consent_protocol \
+    test_sdk_version_check_failure_requires_installed_sdk \
     test_informational_guard_precedes_bootstrap
 do
     "$test_name"

@@ -9,6 +9,10 @@ MOCK_CONFIG="${0}.config"
 if [ "${1:-}" = "-c" ]; then
     MOCK_CODE="${2:-}"
     case "$MOCK_CODE" in
+        *'project.get("requires-python")'*)
+            printf '%s|%s\n' "$MOCK_PROJECT_REQUIRES_PYTHON" "$MOCK_PROJECT_PYTHON_RESULT"
+            exit 0
+            ;;
         *'expected = os.path.realpath'*'is_virtualenv'*)
             case "$MOCK_ENV_IDENTITY" in
                 valid) : ;;
@@ -85,7 +89,7 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "venv" ]; then
 fi
 
 if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
-    printf '%s\n' "$*" >>"$MOCK_CALL_LOG"
+    printf '%s %s\n' "$0" "$*" >>"$MOCK_CALL_LOG"
     case "$*" in
         *'index versions datalens-sdk'*)
             case "$MOCK_INSTALL_MODE" in
@@ -97,6 +101,10 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
                 incompatible)
                     printf 'Link requires a different Python: release Requires-Python %s\n' "$MOCK_REQUIREMENTS" >&2
                     printf 'ERROR: No matching distribution found for datalens-sdk\n' >&2
+                    exit 1
+                    ;;
+                incompatible_fixture)
+                    cat "$MOCK_PIP_OUTPUT_FIXTURE" >&2
                     exit 1
                     ;;
                 fail)

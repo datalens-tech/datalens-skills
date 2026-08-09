@@ -544,7 +544,7 @@ bootstrap_probe_managed_ownership() {
     MANAGED_OWNERSHIP_RESULT="failed"
     case "$MANAGED_SOURCE" in
         uv)
-            uv sync --dry-run --frozen --python "$base_python" --no-progress --color never \
+            uv sync --dry-run --python "$base_python" --no-progress --color never \
                 >"$query_log" 2>&1 || return 0
             grep -Eiq '^[[:space:]]*-[[:space:]]+datalens[-_]sdk([=[:space:]]|$)' "$query_log" \
                 && sdk_remove="yes"
@@ -750,7 +750,7 @@ bootstrap_install_project() {
     case "$MANAGED_SOURCE" in
         uv)
             if [ -z "$target_version" ] && [ "$MANAGED_OWNERSHIP_RESULT" = "drifted" ]; then
-                uv sync --frozen --python "$project_python" --no-progress --color never \
+                uv sync --python "$project_python" --no-progress --color never \
                     >"$install_log" 2>&1 || return 1
             else
                 uv add "$requirement" >"$install_log" 2>&1 || return 1

@@ -62,8 +62,9 @@ Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
     would remove or replace. Explain that the manager will select the exact version from the
     project's sources, lock, and Python constraints; reconciliation can upgrade or downgrade the
     currently importable SDK. The project manifest and lock may change when a dependency must be
-    added. A Poetry install can also install other missing locked dependencies but does not remove
-    untracked packages; a uv sync is exact and can remove unmanaged packages. No `SDK_VERSION` or
+    added, and uv may update a stale lock to match the manifest during reconciliation. A Poetry
+    install can also install other missing locked dependencies but does not remove untracked
+    packages; a uv sync is exact and can remove unmanaged packages. No `SDK_VERSION` or
     `AVAILABLE_SDK_VERSION` is expected before this consent. If they approve, run the exact command
     below, then parse its result again:
 

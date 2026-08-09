@@ -538,14 +538,21 @@ bootstrap_extract_managed_version() {
 bootstrap_probe_managed_ownership() {
     local base_python="$1"
     local query_log="${BOOTSTRAP_TMP_ROOT}/${MANAGED_SOURCE}-ownership.log"
+    local sdk_add="no"
+    local sdk_remove="no"
 
     MANAGED_OWNERSHIP_RESULT="failed"
     case "$MANAGED_SOURCE" in
         uv)
-            uv sync --dry-run --python "$base_python" --no-progress --color never \
+            uv sync --dry-run --frozen --python "$base_python" --no-progress --color never \
                 >"$query_log" 2>&1 || return 0
-            if grep -Eiq '^[[:space:]]*-[[:space:]]+datalens[-_]sdk([=[:space:]]|$)' "$query_log" \
-                && ! grep -Eiq '^[[:space:]]*[+][[:space:]]+datalens[-_]sdk([=[:space:]]|$)' "$query_log"; then
+            grep -Eiq '^[[:space:]]*-[[:space:]]+datalens[-_]sdk([=[:space:]]|$)' "$query_log" \
+                && sdk_remove="yes"
+            grep -Eiq '^[[:space:]]*[+][[:space:]]+datalens[-_]sdk([=[:space:]]|$)' "$query_log" \
+                && sdk_add="yes"
+            if [ "$sdk_add" = "yes" ]; then
+                MANAGED_OWNERSHIP_RESULT="drifted"
+            elif [ "$sdk_remove" = "yes" ]; then
                 MANAGED_OWNERSHIP_RESULT="unowned"
             else
                 MANAGED_OWNERSHIP_RESULT="owned"
@@ -554,7 +561,10 @@ bootstrap_probe_managed_ownership() {
         poetry)
             poetry install --sync --dry-run --no-interaction --no-ansi \
                 >"$query_log" 2>&1 || return 0
-            if grep -Eiq 'removing[[:space:]]+datalens[-_]sdk([[:space:](]|$)' "$query_log"; then
+            if grep -Eiq '(installing|updating|downgrading)[[:space:]]+datalens[-_]sdk([[:space:](]|$)' \
+                "$query_log"; then
+                MANAGED_OWNERSHIP_RESULT="drifted"
+            elif grep -Eiq 'removing[[:space:]]+datalens[-_]sdk([[:space:](]|$)' "$query_log"; then
                 MANAGED_OWNERSHIP_RESULT="unowned"
             else
                 MANAGED_OWNERSHIP_RESULT="owned"
@@ -739,12 +749,19 @@ bootstrap_install_project() {
     bootstrap_note "${action} datalens-sdk into ${BOOTSTRAP_VENV}..."
     case "$MANAGED_SOURCE" in
         uv)
-            uv add "$requirement" >"$install_log" 2>&1 || return 1
+            if [ -z "$target_version" ] && [ "$MANAGED_OWNERSHIP_RESULT" = "drifted" ]; then
+                uv sync --frozen --python "$project_python" --no-progress --color never \
+                    >"$install_log" 2>&1 || return 1
+            else
+                uv add "$requirement" >"$install_log" 2>&1 || return 1
+            fi
             bootstrap_managed_python_info uv || return 1
             project_python="$BOOTSTRAP_PYTHON"
             ;;
         poetry)
-            if [ -z "$target_version" ]; then
+            if [ -z "$target_version" ] && [ "$MANAGED_OWNERSHIP_RESULT" = "drifted" ]; then
+                poetry install --no-root --no-interaction --no-ansi >"$install_log" 2>&1 || return 1
+            elif [ -z "$target_version" ]; then
                 if ! poetry install --dry-run --no-root --no-interaction --no-ansi \
                     >"$plan_log" 2>&1; then
                     return 1
@@ -928,8 +945,8 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
         bootstrap_probe_managed_ownership "$BOOTSTRAP_PYTHON"
         case "$MANAGED_OWNERSHIP_RESULT" in
             owned) : ;;
-            unowned)
-                bootstrap_note "The installed datalens-sdk is not preserved by ${MANAGED_SOURCE}; manager ownership is required."
+            unowned|drifted)
+                bootstrap_note "The installed datalens-sdk does not exactly match ${MANAGED_SOURCE} synchronization; manager reconciliation is required."
                 BOOTSTRAP_SDK_VERSION=""
                 BOOTSTRAP_AVAILABLE_SDK_VERSION=""
                 ;;

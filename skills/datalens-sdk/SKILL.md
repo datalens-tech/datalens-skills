@@ -58,11 +58,12 @@ Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
 - `STATUS=decision_required` — do not load the package skill or perform SDK work yet:
   - `REASON=sdk_install_required` — a uv/Poetry project needs `datalens-sdk` installed through its
     manager. The dependency may already be declared but missing from an unsynced environment, or
-    it may need to be added. This also covers an importable SDK that was installed directly with
-    pip but would be removed by the manager's exact sync. Explain that the manager will select the
-    exact version from the project's sources and Python constraints, and that the project manifest
-    and lock may change. A Poetry install can also install other missing locked dependencies, but
-    does not perform an exact sync or remove untracked packages. No `SDK_VERSION` or
+    it may need to be added. This also covers an importable SDK that the manager's synchronization
+    would remove or replace. Explain that the manager will select the exact version from the
+    project's sources, lock, and Python constraints; reconciliation can upgrade or downgrade the
+    currently importable SDK. The project manifest and lock may change when a dependency must be
+    added. A Poetry install can also install other missing locked dependencies but does not remove
+    untracked packages; a uv sync is exact and can remove unmanaged packages. No `SDK_VERSION` or
     `AVAILABLE_SDK_VERSION` is expected before this consent. If they approve, run the exact command
     below, then parse its result again:
 

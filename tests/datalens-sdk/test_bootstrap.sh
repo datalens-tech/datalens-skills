@@ -128,19 +128,30 @@ case "${1:-}" in
         ;;
     sync)
         printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
-        case "${MOCK_MANAGER_OWNERSHIP_MODE:-owned}" in
-            owned) printf 'Audited project environment\n' ;;
-            unowned)
-                printf 'Would uninstall 1 package\n'
-                printf ' - datalens-sdk==%s\n' "$(<"${MOCK_UV_PYTHON:?}.sdk-installed")"
+        case "$*" in
+            *'--dry-run'*)
+                case "${MOCK_MANAGER_OWNERSHIP_MODE:-owned}" in
+                    owned) printf 'Audited project environment\n' ;;
+                    unowned)
+                        printf 'Would uninstall 1 package\n'
+                        printf ' - datalens-sdk==%s\n' "$(<"${MOCK_UV_PYTHON:?}.sdk-installed")"
+                        ;;
+                    update)
+                        printf 'Would uninstall 1 package\nWould install 1 package\n'
+                        printf ' - datalens-sdk==%s\n' "$(<"${MOCK_UV_PYTHON:?}.sdk-installed")"
+                        printf ' + datalens-sdk==%s\n' "${MOCK_MANAGER_LOCKED_VERSION:?}"
+                        ;;
+                    fail) exit 1 ;;
+                    *) exit 2 ;;
+                esac
                 ;;
-            update)
-                printf 'Would uninstall 1 package\nWould install 1 package\n'
-                printf ' - datalens-sdk==%s\n' "$(<"${MOCK_UV_PYTHON:?}.sdk-installed")"
-                printf ' + datalens-sdk==%s\n' "${MOCK_MANAGER_AVAILABLE_VERSION:?}"
+            *)
+                [ "${MOCK_MANAGER_SYNC_MODE:-success}" = "success" ] || exit 1
+                [ "${MOCK_MANAGER_OWNERSHIP_MODE:-owned}" = "update" ] || exit 2
+                printf '%s\n' "${MOCK_MANAGER_LOCKED_VERSION:?}" \
+                    >"${MOCK_UV_PYTHON:?}.sdk-installed"
+                printf 'Installed datalens-sdk==%s\n' "$MOCK_MANAGER_LOCKED_VERSION"
                 ;;
-            fail) exit 1 ;;
-            *) exit 2 ;;
         esac
         ;;
     add)
@@ -200,7 +211,12 @@ case "${1:-}" in
                     update)
                         printf 'Package operations: 0 installs, 1 update, 0 removals\n'
                         printf '  - Updating datalens-sdk (%s -> %s)\n' \
-                            "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")" "${MOCK_MANAGER_AVAILABLE_VERSION:?}"
+                            "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")" "${MOCK_MANAGER_LOCKED_VERSION:?}"
+                        ;;
+                    downgrade)
+                        printf 'Package operations: 0 installs, 0 updates, 1 downgrade\n'
+                        printf '  • Downgrading datalens-sdk (%s -> %s)\n' \
+                            "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")" "${MOCK_MANAGER_LOCKED_VERSION:?}"
                         ;;
                     fail) exit 1 ;;
                     *) exit 2 ;;
@@ -223,6 +239,7 @@ case "${1:-}" in
                 esac
                 ;;
             *'--no-root'*)
+                [ "${MOCK_MANAGER_SYNC_MODE:-success}" = "success" ] || exit 1
                 case "${MOCK_POETRY_DEPENDENCY_MODE:-undeclared}" in
                     declared|downgrade) : ;;
                     *) exit 2 ;;
@@ -255,11 +272,14 @@ new_case() {
     MOCK_MANAGER_ADD_MODE="success"
     MOCK_MANAGER_RESOLVE_MODE="success"
     MOCK_MANAGER_AVAILABLE_VERSION="9.9.0"
+    MOCK_MANAGER_LOCKED_VERSION="9.9.0"
     MOCK_MANAGER_OWNERSHIP_MODE="owned"
+    MOCK_MANAGER_SYNC_MODE="success"
     MOCK_POETRY_DEPENDENCY_MODE="undeclared"
     MOCK_POETRY_DECLARED_VERSION="0.3.0"
     export MOCK_MANAGER_LOG MOCK_MANAGER_ADD_MODE MOCK_MANAGER_RESOLVE_MODE MOCK_MANAGER_AVAILABLE_VERSION \
-        MOCK_MANAGER_OWNERSHIP_MODE MOCK_POETRY_DEPENDENCY_MODE MOCK_POETRY_DECLARED_VERSION
+        MOCK_MANAGER_LOCKED_VERSION MOCK_MANAGER_OWNERSHIP_MODE MOCK_MANAGER_SYNC_MODE \
+        MOCK_POETRY_DEPENDENCY_MODE MOCK_POETRY_DECLARED_VERSION
     unset MOCK_PYENV_VERSION MOCK_PYENV_PREFIX MOCK_UV_PYTHON MOCK_POETRY_PYTHON || true
     unset PIP_REQUIRE_VIRTUALENV || true
 }
@@ -359,8 +379,6 @@ test_uv_array_source_marker_uses_native_resolver() {
     export MOCK_UV_PYTHON
     make_python "$MOCK_UV_PYTHON" "7.4.2" success "11.0.0" success ">=3" yes success "10.0.0" newer
     make_uv "$CASE_TOOLS/uv"
-    MOCK_MANAGER_OWNERSHIP_MODE="update"
-    export MOCK_MANAGER_OWNERSHIP_MODE
     run_bootstrap
     assert_contains "$CASE_OUTPUT" "AVAILABLE_SDK_VERSION=11.0.0"
     assert_contains "$CASE_OUTPUT" "REASON=sdk_update_available"
@@ -598,6 +616,103 @@ test_poetry_pip_installed_sdk_requires_manager_ownership() {
     assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.9.0"
     assert_contains "$CASE_OUTPUT" "STATUS=ready"
     assert_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+}
+
+test_uv_version_drift_requires_sync_before_freshness() {
+    new_case uv-version-drift
+    touch "$CASE_PROJECT/uv.lock"
+    MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    MOCK_MANAGER_OWNERSHIP_MODE="update"
+    MOCK_MANAGER_LOCKED_VERSION="0.4.0"
+    MOCK_MANAGER_AVAILABLE_VERSION="0.6.0"
+    export MOCK_UV_PYTHON MOCK_MANAGER_OWNERSHIP_MODE MOCK_MANAGER_LOCKED_VERSION \
+        MOCK_MANAGER_AVAILABLE_VERSION
+    make_python "$MOCK_UV_PYTHON" "3.12.11" success "0.6.0" success ">=3" yes success "0.5.0"
+    MOCK_MANAGER_AVAILABLE_VERSION="0.6.0"
+    export MOCK_MANAGER_AVAILABLE_VERSION
+    make_uv "$CASE_TOOLS/uv"
+
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "SDK=missing"
+    assert_not_contains "$CASE_OUTPUT" "SDK_VERSION="
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_install_required"
+    assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "sync --dry-run --frozen"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "lock --dry-run"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+    [ "$(<"$MOCK_UV_PYTHON.sdk-installed")" = "0.5.0" ] \
+        || fail "uv drift check changed the installed SDK"
+
+    run_bootstrap --install-sdk
+    assert_contains "$CASE_OUTPUT" "SDK=installed_now"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=0.4.0"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "sync --frozen --python"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+    [ "$(<"$MOCK_UV_PYTHON.sdk-installed")" = "0.4.0" ] \
+        || fail "uv sync did not restore the locked SDK"
+}
+
+test_poetry_version_drift_requires_install_before_freshness() {
+    new_case poetry-version-drift
+    touch "$CASE_PROJECT/poetry.lock"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    MOCK_MANAGER_OWNERSHIP_MODE="downgrade"
+    MOCK_MANAGER_LOCKED_VERSION="0.3.0"
+    MOCK_MANAGER_AVAILABLE_VERSION="0.6.0"
+    MOCK_POETRY_DEPENDENCY_MODE="downgrade"
+    MOCK_POETRY_DECLARED_VERSION="0.3.0"
+    export MOCK_POETRY_PYTHON MOCK_MANAGER_OWNERSHIP_MODE MOCK_MANAGER_LOCKED_VERSION \
+        MOCK_MANAGER_AVAILABLE_VERSION MOCK_POETRY_DEPENDENCY_MODE MOCK_POETRY_DECLARED_VERSION
+    make_python "$MOCK_POETRY_PYTHON" "3.12.11" success "0.6.0" success ">=3" yes success "0.5.0"
+    MOCK_MANAGER_AVAILABLE_VERSION="0.6.0"
+    export MOCK_MANAGER_AVAILABLE_VERSION
+    make_poetry "$CASE_TOOLS/poetry"
+
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "SDK=missing"
+    assert_not_contains "$CASE_OUTPUT" "SDK_VERSION="
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_install_required"
+    assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "install --sync --dry-run"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add --dry-run"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+    [ "$(<"$MOCK_POETRY_PYTHON.sdk-installed")" = "0.5.0" ] \
+        || fail "Poetry drift check changed the installed SDK"
+
+    run_bootstrap --install-sdk
+    assert_contains "$CASE_OUTPUT" "SDK=installed_now"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=0.3.0"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "install --no-root --no-interaction --no-ansi"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+    [ "$(<"$MOCK_POETRY_PYTHON.sdk-installed")" = "0.3.0" ] \
+        || fail "Poetry install did not restore the locked SDK"
+}
+
+test_managed_drift_reconciliation_failure_preserves_environment() {
+    new_case uv-drift-sync-failure
+    touch "$CASE_PROJECT/uv.lock"
+    MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    MOCK_MANAGER_OWNERSHIP_MODE="update"
+    MOCK_MANAGER_LOCKED_VERSION="0.4.0"
+    MOCK_MANAGER_SYNC_MODE="fail"
+    export MOCK_UV_PYTHON MOCK_MANAGER_OWNERSHIP_MODE MOCK_MANAGER_LOCKED_VERSION \
+        MOCK_MANAGER_SYNC_MODE
+    make_python "$MOCK_UV_PYTHON" "3.12.11" success "0.6.0" success ">=3" yes success "0.5.0"
+    make_uv "$CASE_TOOLS/uv"
+    touch "$CASE_PROJECT/.venv/user-sentinel"
+
+    run_bootstrap --install-sdk
+    assert_contains "$CASE_OUTPUT" "VENV=reused"
+    assert_contains "$CASE_OUTPUT" "SDK=missing"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_install_failed"
+    assert_contains "$CASE_OUTPUT" "STATUS=blocked"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add datalens-sdk"
+    [ "$(<"$MOCK_UV_PYTHON.sdk-installed")" = "0.5.0" ] \
+        || fail "failed uv sync changed the installed SDK"
+    [ -e "$CASE_PROJECT/.venv/user-sentinel" ] \
+        || fail "failed uv sync replaced the managed environment"
 }
 
 test_managed_ownership_check_failure_never_reports_ready() {
@@ -1139,6 +1254,9 @@ for test_name in \
     test_managed_install_failure_preserves_environment \
     test_uv_pip_installed_sdk_requires_manager_ownership \
     test_poetry_pip_installed_sdk_requires_manager_ownership \
+    test_uv_version_drift_requires_sync_before_freshness \
+    test_poetry_version_drift_requires_install_before_freshness \
+    test_managed_drift_reconciliation_failure_preserves_environment \
     test_managed_ownership_check_failure_never_reports_ready \
     test_managed_project_without_tool_is_preserved \
     test_invalid_managed_environment_is_preserved \

@@ -66,19 +66,26 @@ const pluginRoot = resolve(process.argv[2] ?? resolve(scriptDir, '..'));
 const errors = [];
 const warnings = [];
 
+// Cached, so a manifest consulted by several checks is read — and a broken one reported —
+// exactly once.
+const jsonCache = new Map();
+
 function readJson(relPath) {
-  let raw;
+  if (jsonCache.has(relPath)) return jsonCache.get(relPath);
+  let result;
   try {
-    raw = readFileSync(join(pluginRoot, relPath), 'utf8');
+    const raw = readFileSync(join(pluginRoot, relPath), 'utf8');
+    try {
+      result = { data: JSON.parse(raw) };
+    } catch (err) {
+      errors.push(`${relPath}: not valid JSON — ${err.message}`);
+      result = { invalid: true };
+    }
   } catch {
-    return { missing: true };
+    result = { missing: true };
   }
-  try {
-    return { data: JSON.parse(raw) };
-  } catch (err) {
-    errors.push(`${relPath}: not valid JSON — ${err.message}`);
-    return { invalid: true };
-  }
+  jsonCache.set(relPath, result);
+  return result;
 }
 
 function isPlainObject(v) {
@@ -290,6 +297,22 @@ function isInside(root, candidate) {
   return candidate === root || candidate.startsWith(root + sep);
 }
 
+// Paths the manifests point a client at. A client dereferences these whether or not they are
+// committed, so they are checked on top of the package set (which covers only tracked files).
+function declaredPaths() {
+  const declared = [];
+  const codex = readJson('.codex-plugin/plugin.json').data;
+  if (typeof codex?.skills === 'string') declared.push(codex.skills);
+  for (const relPath of MARKETPLACES) {
+    const entries = readJson(relPath).data?.plugins;
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      if (typeof entry?.source === 'string') declared.push(entry.source);
+      if (typeof entry?.source?.path === 'string') declared.push(entry.source.path);
+    }
+  }
+  return declared;
+}
+
 function validateContainment() {
   let resolvedRoot;
   try {
@@ -300,6 +323,9 @@ function validateContainment() {
   }
 
   const paths = packagePaths();
+  for (const rel of declaredPaths()) {
+    if (!paths.includes(rel)) paths.push(rel);
+  }
   for (const rel of paths) {
     const abs = join(pluginRoot, rel);
     let resolved;

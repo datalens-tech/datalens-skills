@@ -51,11 +51,12 @@ Full per-tool paths and contributor setup are in **[INSTALL.md](INSTALL.md)**.
 
 ```bash
 node scripts/validate_skills.mjs                              # frontmatter + naming
+bash tests/datalens-sdk/test_bootstrap.sh                     # SDK setup and upgrade protocol
 python skills/datalens-html-pages/scripts/validate_page.py -  # HTML page linter (reads stdin)
 python skills/datalens-yc-rls-resolve/tests/test_rls_tool.py      # offline RLS resolver tests
 ```
 
-These checks run in CI on every PR and have no external dependencies.
+These run in CI on every PR and have no external dependencies.
 
 ## Contributing & license
 

@@ -112,6 +112,8 @@ Only the deterministic checks (see [`../.github/workflows/validate.yml`](../.git
 the model-in-the-loop *generation* evals above are run by hand.
 
 - `node scripts/validate_skills.mjs` — frontmatter + naming
+- `bash tests/datalens-sdk/test_bootstrap.sh` — interpreter selection, manager ownership, and the
+  SDK install/upgrade consent protocol
 - `python skills/datalens-yc-rls-resolve/tests/test_rls_tool.py` — offline RLS parsing, resolution,
   conversion, CLI naming, and error handling
 - `python skills/datalens-html-pages/scripts/validate_page.py --self-test` + linting every shipped page

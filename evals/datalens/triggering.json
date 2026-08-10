@@ -1,0 +1,82 @@
+[
+  {
+    "query": "we're evaluating BI tools. what is datalens exactly and what can it connect to?",
+    "should_trigger": true
+  },
+  {
+    "query": "чем в даталенсе отличается воркбук от папки? у нас в навигации и то и другое встречается",
+    "should_trigger": true
+  },
+  {
+    "query": "хотим автоматизировать даталенс. что использовать — api, sdk, mcp? что вообще есть",
+    "should_trigger": true
+  },
+  {
+    "query": "какие инсталляции есть у datalens и чем они отличаются?",
+    "should_trigger": true
+  },
+  {
+    "query": "what's the difference between a wizard chart, a QL chart and an editor chart?",
+    "should_trigger": true
+  },
+  {
+    "query": "у нас даталенс развёрнут на своих серверах. где у него api-эндпоинт?",
+    "should_trigger": true
+  },
+  {
+    "query": "do I have to build a dataset before I can make a chart in datalens, or can a chart read from a connection directly?",
+    "should_trigger": true
+  },
+  {
+    "query": "какой хост у api даталенса в яндекс облаке и где посмотреть спеку?",
+    "should_trigger": true
+  },
+  {
+    "query": "can an agent drive datalens through mcp? is there a server for it",
+    "should_trigger": true
+  },
+  {
+    "query": "нам нужно программно создавать дашборды на регулярной основе. с чего начать, что почитать",
+    "should_trigger": true
+  },
+  {
+    "query": "построй дашборд с выручкой по регионам через python sdk, датасет уже есть — dataset_id 9f3c1",
+    "should_trigger": false
+  },
+  {
+    "query": "напиши скрипт, который клонирует дашборд из одного воркбука в другой",
+    "should_trigger": false
+  },
+  {
+    "query": "мой html-отчёт в даталенсе не грузит plotly, в консоли ошибка content-security-policy. как починить",
+    "should_trigger": false
+  },
+  {
+    "query": "сделай standalone html страницу с таблицей продаж и кнопкой выгрузки в csv, чтобы открывалась в даталенсе",
+    "should_trigger": false
+  },
+  {
+    "query": "выручка в дашборде за март просела на 30%. посмотри, из-за чего",
+    "should_trigger": false
+  },
+  {
+    "query": "открой дашборд и сделай скриншот для презентации",
+    "should_trigger": false
+  },
+  {
+    "query": "как встроить дашборд даталенса в наш внутренний портал через iframe?",
+    "should_trigger": false
+  },
+  {
+    "query": "напиши sql к clickhouse, который посчитает retention по когортам за полгода",
+    "should_trigger": false
+  },
+  {
+    "query": "what's the tableau equivalent of a workbook and how do folders work there?",
+    "should_trigger": false
+  },
+  {
+    "query": "подскажи, как в графане сделать дашборд с алертами по cpu",
+    "should_trigger": false
+  }
+]

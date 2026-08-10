@@ -85,7 +85,9 @@ if [ "${1:-}" = "-c" ]; then
                 *) exit 91 ;;
             esac
             ;;
-        *'importlib.metadata'*'datalens_sdk'*)
+        *'importlib.import_module'*'importlib.metadata.version'*)
+            [ "${3:-}" = "$MOCK_DISTRIBUTION" ] || exit 1
+            [ "${4:-}" = "$MOCK_IMPORT_MODULE" ] || exit 1
             if [ -f "${0}.sdk-installed" ]; then
                 MOCK_RECORDED_VERSION="$(<"${0}.sdk-installed")"
                 printf '%s\n' "${MOCK_RECORDED_VERSION:-$MOCK_INSTALLED_SDK_VERSION}"
@@ -126,7 +128,7 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
         exit 3
     fi
     case "$*" in
-        *'index versions datalens-sdk'*)
+        *"index versions ${MOCK_DISTRIBUTION}"*)
             if [ -n "$MOCK_REQUIRED_PIP_CONFIG" ]; then
                 MOCK_BIN_DIR="${0%/*}"
                 MOCK_PREFIX="${MOCK_BIN_DIR%/*}"
@@ -137,13 +139,24 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
             fi
             case "$MOCK_INSTALL_MODE" in
                 success|fail_project_install|fail_project_break_sdk)
-                    printf 'datalens-sdk (%s)\n' "$MOCK_SDK_VERSION"
+                    printf '%s (%s)\n' "$MOCK_DISTRIBUTION" "$MOCK_SDK_VERSION"
                     printf 'Available versions: %s\n' "$MOCK_SDK_VERSION"
                     exit 0
                     ;;
                 incompatible)
                     printf 'Link requires a different Python: release Requires-Python %s\n' "$MOCK_REQUIREMENTS" >&2
-                    printf 'ERROR: No matching distribution found for datalens-sdk\n' >&2
+                    printf 'ERROR: No matching distribution found for %s\n' "$MOCK_DISTRIBUTION" >&2
+                    exit 1
+                    ;;
+                incompatible_silent)
+                    case "$*" in
+                        *'--ignore-requires-python'*)
+                            printf '%s (%s)\n' "$MOCK_DISTRIBUTION" "$MOCK_SDK_VERSION"
+                            printf 'Available versions: %s\n' "$MOCK_SDK_VERSION"
+                            exit 0
+                            ;;
+                    esac
+                    printf 'ERROR: No matching distribution found for %s\n' "$MOCK_DISTRIBUTION" >&2
                     exit 1
                     ;;
                 incompatible_fixture)
@@ -164,11 +177,11 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
             printf 'ERROR: pip upgrade failed\n' >&2
             exit 1
             ;;
-        *'pip install'*'datalens-sdk'*)
+        *'pip install'*"${MOCK_DISTRIBUTION}"*)
             MOCK_TARGET_SDK_VERSION="$MOCK_SDK_VERSION"
             for MOCK_ARG in "$@"; do
                 case "$MOCK_ARG" in
-                    datalens-sdk==*) MOCK_TARGET_SDK_VERSION="${MOCK_ARG#datalens-sdk==}" ;;
+                    "${MOCK_DISTRIBUTION}"==*) MOCK_TARGET_SDK_VERSION="${MOCK_ARG#${MOCK_DISTRIBUTION}==}" ;;
                 esac
             done
             case "$MOCK_INSTALL_MODE" in
@@ -185,12 +198,12 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
                         esac
                     fi
                     printf '%s\n' "$MOCK_TARGET_SDK_VERSION" >"${0}.sdk-installed"
-                    printf 'Successfully installed datalens-sdk\n'
+                    printf 'Successfully installed %s\n' "$MOCK_DISTRIBUTION"
                     exit 0
                     ;;
                 incompatible)
                     printf 'ERROR: Ignored versions that require a different python version: release Requires-Python %s\n' "$MOCK_REQUIREMENTS" >&2
-                    printf 'ERROR: No matching distribution found for datalens-sdk\n' >&2
+                    printf 'ERROR: No matching distribution found for %s\n' "$MOCK_DISTRIBUTION" >&2
                     exit 1
                     ;;
                 fail)

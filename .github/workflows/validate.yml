@@ -18,6 +18,9 @@ jobs:
       - name: Validate skill frontmatter & naming
         run: node scripts/validate_skills.mjs
 
+      - name: Test DataLens SDK bootstrap
+        run: bash tests/datalens-sdk/test_bootstrap.sh
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

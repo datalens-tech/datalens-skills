@@ -1,0 +1,2 @@
+Link requires a different Python (3.9.6 not in: '>=3.10'): https://files.pythonhosted.org/packages/b7/c3/bbb2e4f257a2b75bc52b13c4148ae62cdecb0bb5445687f8409bd826f1fe/datalens_sdk-0.4.0-py3-none-any.whl (from https://pypi.org/simple/datalens-sdk/) (requires-python:>=3.10)
+ERROR: No matching distribution found for datalens-sdk

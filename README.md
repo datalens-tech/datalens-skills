@@ -63,6 +63,7 @@ Full per-tool paths and contributor setup are in **[INSTALL.md](INSTALL.md)**.
 ## Validation
 
 ```bash
+node scripts/validate_plugin.mjs                              # plugin manifests + path containment
 node scripts/validate_skills.mjs                              # frontmatter + naming
 bash tests/datalens-sdk/test_bootstrap.sh                     # SDK setup and upgrade protocol
 python skills/datalens-html-pages/scripts/validate_page.py -  # HTML page linter (reads stdin)

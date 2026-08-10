@@ -15,6 +15,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Validate plugin manifests & path containment
+        run: node scripts/validate_plugin.mjs
+
       - name: Validate skill frontmatter & naming
         run: node scripts/validate_skills.mjs
 

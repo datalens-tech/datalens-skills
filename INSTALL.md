@@ -30,6 +30,10 @@ codex plugin marketplace add datalens-tech/datalens-skills
 codex plugin add datalens-skills@datalens
 ```
 
+This repository-root plugin layout requires Codex CLI 0.142.0 or newer. Check with
+`codex --version`; upgrade with `codex update` when available, or with the package manager used to
+install Codex.
+
 Start a new Codex session afterward so it discovers the installed skills. Every skill under
 `skills/` is included and namespaced by the plugin, e.g. `datalens-skills:datalens-sdk`.
 

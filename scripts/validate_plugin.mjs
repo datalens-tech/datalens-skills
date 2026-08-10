@@ -162,10 +162,12 @@ function validateManifest(m) {
     }
   }
 
-  // §5.4 forbids clients from rejecting a manifest because `version` is not SemVer or a URL
-  // field is unparseable, so these stay warnings even though we own this package.
+  // §5.4 forbids *clients* from rejecting a manifest over a non-SemVer `version`, but this
+  // script runs as the package author, and our release process — CHANGELOG.md, `vX.Y.Z` tags,
+  // cross-manifest version sync — assumes SemVer, so here it is an error. URL fields stay
+  // warnings: nothing downstream depends on them parsing.
   if (typeof m.version === 'string' && !SEMVER_RE.test(m.version)) {
-    warnings.push(`plugin.json: version "${m.version}" is not Semantic Versioning (RECOMMENDED by §10.2)`);
+    errors.push(`plugin.json: version "${m.version}" is not Semantic Versioning (release process requires it; spec §10.2 recommends it)`);
   }
   for (const field of ['homepage', 'repository']) {
     if (typeof m[field] === 'string') {

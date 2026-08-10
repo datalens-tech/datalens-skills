@@ -30,9 +30,8 @@ codex plugin marketplace add datalens-tech/datalens-skills
 codex plugin add datalens-skills@datalens
 ```
 
-Start a new Codex session afterward so it discovers the installed skills. They are namespaced by
-the plugin, e.g. `datalens-skills:datalens-html-pages` and
-`datalens-skills:datalens-yc-rls-resolve`.
+Start a new Codex session afterward so it discovers the installed skills. Every skill under
+`skills/` is included and namespaced by the plugin, e.g. `datalens-skills:datalens-sdk`.
 
 ## Claude Code — native plugin
 
@@ -43,8 +42,8 @@ If you prefer the built-in flow, this repo is also a Claude Code plugin marketpl
 /plugin install datalens-skills@datalens
 ```
 
-Installed skills are namespaced by the plugin, e.g. `datalens-skills:datalens-html-pages` and
-`datalens-skills:datalens-yc-rls-resolve`.
+Every skill under `skills/` is included and namespaced by the plugin, e.g.
+`datalens-skills:datalens-sdk`.
 
 ## Manual — copy the folder
 
@@ -80,8 +79,8 @@ Restart your agent afterward so it re-scans skills.
 ## Verify it loaded
 
 The selected skill should show up in your agent's list of available skills — under its own name
-when installed directly, and prefixed with `datalens-skills:` when installed through the Claude
-Code plugin.
+when installed directly, and prefixed with `datalens-skills:` when installed through a native
+plugin.
 
 ---
 

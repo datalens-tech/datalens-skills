@@ -10,7 +10,9 @@ The community [`skills`](https://www.npmjs.com/package/skills) CLI installs into
 use — Claude Code, Codex, OpenCode, and more — detecting it automatically:
 
 ```bash
+npx skills add datalens-tech/datalens-skills --skill datalens
 npx skills add datalens-tech/datalens-skills --skill datalens-html-pages
+npx skills add datalens-tech/datalens-skills --skill datalens-sdk
 npx skills add datalens-tech/datalens-skills --skill datalens-yc-rls-resolve
 ```
 
@@ -43,7 +45,9 @@ A skill is just a folder; drop the one(s) you want straight into the directory y
 
 ```bash
 git clone https://github.com/datalens-tech/datalens-skills
+cp -R datalens-skills/skills/datalens ~/.claude/skills/
 cp -R datalens-skills/skills/datalens-html-pages ~/.claude/skills/
+cp -R datalens-skills/skills/datalens-sdk ~/.claude/skills/
 cp -R datalens-skills/skills/datalens-yc-rls-resolve ~/.claude/skills/
 ```
 
@@ -62,9 +66,9 @@ Restart your agent afterward so it re-scans skills.
 
 ## Verify it loaded
 
-The selected skill should show up in your agent's list of available skills —
-`datalens-html-pages` or `datalens-yc-rls-resolve` when installed directly, and prefixed with
-`datalens-skills:` when installed through the Claude Code plugin.
+The selected skill should show up in your agent's list of available skills — under its own name
+when installed directly, and prefixed with `datalens-skills:` when installed through the Claude
+Code plugin.
 
 ---
 

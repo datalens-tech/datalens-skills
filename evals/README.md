@@ -74,6 +74,38 @@ python evals/datalens-html-pages/grade_report.py path/to/generated.html
 `grade_report.py --self-test` grades the **shipped template** — it must pass every mechanical
 check, so it doubles as a regression guard on the exemplar (and runs in CI).
 
+## `datalens/` and `datalens-sdk/`
+
+### `triggering.json` — *which of the DataLens skills fires?*
+
+20 cases each, same bare-array format and same runner as above. These two matter more than a
+per-skill set usually would, because the DataLens skills share a vocabulary — "дашборд", "датасет",
+"чарт" appear in all of them — and the only thing keeping them apart is how each `description` is
+worded. `datalens` is phrased definitionally ("what is a dataset", "which installation", "what
+should we automate this with"); `datalens-sdk` is phrased imperatively ("build it", "the script
+fails with 409"). Nothing enforces that split but these sets.
+
+So the `should_trigger: false` half of each file is deliberately the *siblings'* territory rather
+than unrelated noise: `datalens/` is fed SDK tasks and HTML-report tasks, `datalens-sdk/` is fed
+orientation questions and "SDK or MCP?" Add a case here whenever a `description` changes.
+
+```bash
+python -m scripts.run_loop \
+  --eval-set evals/datalens/triggering.json \
+  --skill-path skills/datalens \
+  --model <model-id> --holdout 0.4 --verbose
+```
+
+The Yandex Team skills are distributed from a separate internal repository and carry their own
+triggering sets there, including the near-misses that point back at these two — an on-premise
+endpoint question must not pull in the internal overlay, and a `yandex-team.ru` one must.
+
+No `behavior.json` for either: neither skill produces an artifact to grade. `datalens` routes, and
+`datalens-sdk` defers to instructions that ship inside the SDK package and are graded in that
+repository. The behaviour worth testing for `datalens-sdk` is that the agent actually resolves and
+reads the package instructions instead of improvising an API — worth adding once the package ships
+them.
+
 ## What runs in CI
 
 Only the deterministic checks (see [`../.github/workflows/validate.yml`](../.github/workflows/validate.yml));

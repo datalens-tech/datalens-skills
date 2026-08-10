@@ -1,0 +1,26 @@
+{
+  "name": "datalens-skills",
+  "version": "0.1.0",
+  "description": "Skills for working with Yandex DataLens",
+  "author": {
+    "name": "DataLens"
+  },
+  "homepage": "https://github.com/datalens-tech/datalens-skills",
+  "repository": "https://github.com/datalens-tech/datalens-skills",
+  "license": "Apache-2.0",
+  "keywords": ["datalens", "skills", "bi", "analytics", "sdk", "html", "reports", "rls", "yandex-cloud"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "DataLens Skills",
+    "shortDescription": "Skills for working with Yandex DataLens",
+    "longDescription": "Skills for understanding DataLens, automating it with the Python SDK, creating HTML reports, and resolving Yandex Cloud identities for RLSv2.",
+    "developerName": "DataLens",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Create a DataLens dashboard with the Python SDK.",
+      "Create a standalone HTML report for DataLens.",
+      "Resolve Yandex Cloud users and groups for DataLens RLSv2."
+    ]
+  }
+}

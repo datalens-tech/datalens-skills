@@ -10,7 +10,9 @@ The community [`skills`](https://www.npmjs.com/package/skills) CLI installs into
 use — Claude Code, Codex, OpenCode, and more — detecting it automatically:
 
 ```bash
+npx skills add datalens-tech/datalens-skills --skill datalens
 npx skills add datalens-tech/datalens-skills --skill datalens-html-pages
+npx skills add datalens-tech/datalens-skills --skill datalens-sdk
 npx skills add datalens-tech/datalens-skills --skill datalens-yc-rls-resolve
 ```
 
@@ -18,6 +20,22 @@ npx skills add datalens-tech/datalens-skills --skill datalens-yc-rls-resolve
 - `-g` — install globally (all projects) instead of just the current one
 - `--copy` — copy the files instead of symlinking into the agent's directory
 - `--list` — just list the skills in this repo without installing
+
+## Codex — native plugin
+
+Add this repository as a marketplace and install the plugin:
+
+```bash
+codex plugin marketplace add datalens-tech/datalens-skills
+codex plugin add datalens-skills@datalens
+```
+
+This repository-root plugin layout requires Codex CLI 0.142.0 or newer. Check with
+`codex --version`; upgrade with `codex update` when available, or with the package manager used to
+install Codex.
+
+Start a new Codex session afterward so it discovers the installed skills. Every skill under
+`skills/` is included and namespaced by the plugin, e.g. `datalens-skills:datalens-sdk`.
 
 ## Claude Code — native plugin
 
@@ -28,8 +46,8 @@ If you prefer the built-in flow, this repo is also a Claude Code plugin marketpl
 /plugin install datalens-skills@datalens
 ```
 
-Installed skills are namespaced by the plugin, e.g. `datalens-skills:datalens-html-pages` and
-`datalens-skills:datalens-yc-rls-resolve`.
+Every skill under `skills/` is included and namespaced by the plugin, e.g.
+`datalens-skills:datalens-sdk`.
 
 ## Manual — copy the folder
 
@@ -43,7 +61,9 @@ A skill is just a folder; drop the one(s) you want straight into the directory y
 
 ```bash
 git clone https://github.com/datalens-tech/datalens-skills
+cp -R datalens-skills/skills/datalens ~/.claude/skills/
 cp -R datalens-skills/skills/datalens-html-pages ~/.claude/skills/
+cp -R datalens-skills/skills/datalens-sdk ~/.claude/skills/
 cp -R datalens-skills/skills/datalens-yc-rls-resolve ~/.claude/skills/
 ```
 
@@ -62,9 +82,9 @@ Restart your agent afterward so it re-scans skills.
 
 ## Verify it loaded
 
-The selected skill should show up in your agent's list of available skills —
-`datalens-html-pages` or `datalens-yc-rls-resolve` when installed directly, and prefixed with
-`datalens-skills:` when installed through the Claude Code plugin.
+The selected skill should show up in your agent's list of available skills — under its own name
+when installed directly, and prefixed with `datalens-skills:` when installed through a native
+plugin.
 
 ---
 

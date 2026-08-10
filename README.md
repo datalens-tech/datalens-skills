@@ -12,7 +12,9 @@ HTTP API, or an MCP server.
 
 | Skill | What it does |
 |-------|--------------|
+| [`datalens`](skills/datalens/SKILL.md) | Start here. What DataLens is, how its installations differ, the entity model, and which interface — SDK, MCP, API, UI — fits the task. Routes to the rest. |
 | [`datalens-html-pages`](skills/datalens-html-pages/SKILL.md) | Author, sanitize, validate, and publish standalone HTML pages (AI-generated reports) that render in a sandboxed iframe under an injected CSP. |
+| [`datalens-sdk`](skills/datalens-sdk/SKILL.md) | Drive DataLens from Python — connections, datasets, charts, dashboards. Loads its instructions from the installed SDK package so they always match the installed version. |
 | [`datalens-yc-rls-resolve`](skills/datalens-yc-rls-resolve/SKILL.md) | Resolve Yandex Cloud users and groups into DataLens RLSv2 subject IDs, or convert a legacy `rls` configuration to `rls2`. |
 
 ## Install
@@ -22,12 +24,27 @@ installs the skill into whichever agent you use — Claude Code, Codex, OpenCode
 detecting it automatically:
 
 ```bash
+npx skills add datalens-tech/datalens-skills --skill datalens
 npx skills add datalens-tech/datalens-skills --skill datalens-html-pages
+npx skills add datalens-tech/datalens-skills --skill datalens-sdk
 npx skills add datalens-tech/datalens-skills --skill datalens-yc-rls-resolve
 ```
 
 Choose the skill you need. Add `--agent '*'` to install it into every agent you have, or `-g` for
 a global (all-projects) install.
+
+**Codex — native plugin.** Add this repository as a marketplace and install the plugin:
+
+```bash
+codex plugin marketplace add datalens-tech/datalens-skills
+codex plugin add datalens-skills@datalens
+```
+
+This repository-root plugin layout requires Codex CLI 0.142.0 or newer. Check with
+`codex --version`; upgrade with `codex update` when available, or with the package manager used to
+install Codex.
+
+Start a new Codex session afterward so it discovers the installed skills.
 
 **Claude Code — native plugin.** If you prefer the built-in flow, this repo is also a plugin
 marketplace:
@@ -47,11 +64,12 @@ Full per-tool paths and contributor setup are in **[INSTALL.md](INSTALL.md)**.
 
 ```bash
 node scripts/validate_skills.mjs                              # frontmatter + naming
+bash tests/datalens-sdk/test_bootstrap.sh                     # SDK setup and upgrade protocol
 python skills/datalens-html-pages/scripts/validate_page.py -  # HTML page linter (reads stdin)
 python skills/datalens-yc-rls-resolve/tests/test_rls_tool.py      # offline RLS resolver tests
 ```
 
-These checks run in CI on every PR and have no external dependencies.
+These run in CI on every PR and have no external dependencies.
 
 ## Contributing & license
 

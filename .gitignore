@@ -20,6 +20,7 @@ npm-debug.log*
 
 # Agent tool local settings (per-user; the skills symlinks ARE committed)
 .claude/settings.local.json
+.claude/worktrees/
 
 # Skill-creator scratch (trigger-eval sets, optimizer reports)
 .skill-creator/

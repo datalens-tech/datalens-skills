@@ -20,6 +20,11 @@ metadata:
 
 Operate Yandex DataLens through the official Python SDK — never hand-built HTTP requests.
 
+Before continuing, locate and read the available skill whose name or namespaced basename is
+`datalens`. It supplies the shared installation and object-model context that applies alongside
+these SDK instructions. If it is absent, report an incomplete public DataLens skill installation
+and stop. After reading it, return here for SDK setup and execution.
+
 **The instructions for this skill are stored inside the installed `datalens-sdk` package**, and are
 extended there by whatever DataLens installation the environment targets. The SDK is a 0.x alpha
 where minor releases rename classes and methods, so instructions that shipped separately would

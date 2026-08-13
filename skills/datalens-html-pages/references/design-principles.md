@@ -75,7 +75,7 @@ The overall feel is a light, clean dashboard on a soft gray background (`--dl-co
 
 - Series colors — `--dl-graph-palette-color-1`…`-20` from `dl-theme-tokens.css`. Start with the first and take them in order.
 - **One metric — one color.** Don't paint the bars of a single series in different palette colors: color is there to tell series apart, not to decorate.
-- Semantics beats palette order: growth/positive — `--g-color-text-positive` / `--g-color-base-positive`, decline/problem — `-danger`, warning — `-warning`. Color deltas in indicators and tables semantically (▲ green, ▼ red).
+- Semantics beats palette order: growth/positive — `--g-color-text-positive` for text, `--g-color-base-positive-light` for backgrounds (delta badges, highlighted cells); decline/problem — `--g-color-text-danger` / `--g-color-base-danger-light`; warning — `--g-color-text-warning` / `--g-color-base-warning-light`. The `--g-color-base-*` family has no plain form — always pick a `-light` / `-medium` / `-heavy` variant. Color deltas in indicators and tables semantically (▲ green, ▼ red).
 - Text: primary — `--g-color-text-primary`, secondary — `--g-color-text-secondary`.
 - Accent: `--g-color-text-brand` for text, `--g-color-base-brand` for backgrounds.
 - Lines: `--g-color-line-generic`; `--g-color-line-generic-solid` when lines overlap each other.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap datalens-sdk without encoding SDK or Python compatibility versions.
+# Bootstrap an SDK package without encoding package or Python compatibility versions.
 #
 # Run from the user's project directory. The script:
 #   * prefers a uv/Poetry-managed environment over a same-named ./.venv;
@@ -13,8 +13,22 @@
 # exits zero; callers must act on STATUS. Pass --install-sdk only after the
 # user approves a manager-selected install, or --upgrade-sdk VERSION only
 # after the user approves the exact version reported by a prior run.
+#
+# Thin wrapper skills may reuse this engine by setting all three variables:
+#   DATALENS_BOOTSTRAP_DISTRIBUTION  Python distribution name
+#   DATALENS_BOOTSTRAP_IMPORT_MODULE import module used for the health check
+#   DATALENS_BOOTSTRAP_CHANGELOG_URL optional HTTPS changelog URL (or empty)
+#   DATALENS_BOOTSTRAP_POETRY_SOURCE optional project-local Poetry package source
+# Invalid profiles are blocked before any project inspection or mutation.
 
 set -uo pipefail
+
+BOOTSTRAP_DISTRIBUTION=""
+BOOTSTRAP_IMPORT_MODULE=""
+BOOTSTRAP_CHANGELOG_URL=""
+BOOTSTRAP_POETRY_SOURCE=""
+BOOTSTRAP_DISTRIBUTION_PATTERN=""
+BOOTSTRAP_TMP_PREFIX=""
 
 BOOTSTRAP_CWD="$(pwd -P)"
 BOOTSTRAP_PROJECT_VENV="${BOOTSTRAP_CWD}/.venv"
@@ -28,7 +42,6 @@ BOOTSTRAP_PYTHON_SOURCE=""
 BOOTSTRAP_SDK="missing"
 BOOTSTRAP_SDK_VERSION=""
 BOOTSTRAP_AVAILABLE_SDK_VERSION=""
-BOOTSTRAP_CHANGELOG_URL="https://github.com/datalens-tech/datalens-sdk/blob/main/CHANGELOG.md"
 BOOTSTRAP_REQUIRES_PYTHON=""
 BOOTSTRAP_PROJECT_REQUIRES_PYTHON=""
 BOOTSTRAP_CONFIGURED_PYTHON=""
@@ -65,6 +78,46 @@ CANDIDATE_CANONICAL=""
 
 bootstrap_note() {
     printf '%s\n' "$*" >&2
+}
+
+bootstrap_validate_profile() {
+    local distribution_set="${DATALENS_BOOTSTRAP_DISTRIBUTION+yes}"
+    local import_module_set="${DATALENS_BOOTSTRAP_IMPORT_MODULE+yes}"
+    local changelog_url_set="${DATALENS_BOOTSTRAP_CHANGELOG_URL+yes}"
+    local poetry_source_set="${DATALENS_BOOTSTRAP_POETRY_SOURCE+yes}"
+
+    if [ -z "$distribution_set" ] && [ -z "$import_module_set" ] && [ -z "$changelog_url_set" ]; then
+        [ -z "$poetry_source_set" ] || return 1
+        BOOTSTRAP_DISTRIBUTION="datalens-sdk"
+        BOOTSTRAP_IMPORT_MODULE="datalens_sdk"
+        BOOTSTRAP_CHANGELOG_URL="https://github.com/datalens-tech/datalens-sdk/blob/main/CHANGELOG.md"
+    elif [ -n "$distribution_set" ] && [ -n "$import_module_set" ] && [ -n "$changelog_url_set" ]; then
+        BOOTSTRAP_DISTRIBUTION="$DATALENS_BOOTSTRAP_DISTRIBUTION"
+        BOOTSTRAP_IMPORT_MODULE="$DATALENS_BOOTSTRAP_IMPORT_MODULE"
+        BOOTSTRAP_CHANGELOG_URL="$DATALENS_BOOTSTRAP_CHANGELOG_URL"
+        [ -z "$poetry_source_set" ] || BOOTSTRAP_POETRY_SOURCE="$DATALENS_BOOTSTRAP_POETRY_SOURCE"
+    else
+        return 1
+    fi
+
+    case "$BOOTSTRAP_DISTRIBUTION" in
+        ""|*[!A-Za-z0-9._-]*|[-_.]*) return 1 ;;
+    esac
+    if ! printf '%s\n' "$BOOTSTRAP_IMPORT_MODULE" \
+        | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$'; then
+        return 1
+    fi
+    case "$BOOTSTRAP_CHANGELOG_URL" in
+        ""|https://*) : ;;
+        *) return 1 ;;
+    esac
+    case "$BOOTSTRAP_POETRY_SOURCE" in
+        "") : ;;
+        *[!A-Za-z0-9._-]*|[-_.]*) return 1 ;;
+    esac
+    BOOTSTRAP_DISTRIBUTION_PATTERN="$(awk -v distribution="$BOOTSTRAP_DISTRIBUTION" \
+        'BEGIN { gsub(/[-_.]/, "[-_.]", distribution); print distribution }')"
+    BOOTSTRAP_TMP_PREFIX="$BOOTSTRAP_DISTRIBUTION"
 }
 
 bootstrap_cleanup() {
@@ -219,6 +272,7 @@ bootstrap_managed_python_info() {
             ;;
         *) return 1 ;;
     esac
+    info="$(printf '%s\n' "$info" | awk '/[|]/{value=$0} END {print value}')"
     case "$info" in
         *'|'*) : ;;
         *) return 1 ;;
@@ -237,11 +291,10 @@ bootstrap_has_poetry_marker() {
     grep -Eq '^[[:space:]]*(\[\[tool\.poetry(\.[^]]+)?\]\]|\[tool\.poetry(\.[^]]+)?\])[[:space:]]*(#.*)?$' "$1"
 }
 
-bootstrap_find_managed_environment() {
+bootstrap_select_manager() {
     local has_uv_project="no"
     local has_poetry_project="no"
 
-    MANAGED_RESULT="none"
     MANAGED_SOURCE=""
     if [ -f "${BOOTSTRAP_CWD}/uv.lock" ] || [ -f "${BOOTSTRAP_CWD}/uv.toml" ] \
         || [ -n "${UV_PROJECT_ENVIRONMENT:-}" ] \
@@ -259,13 +312,34 @@ bootstrap_find_managed_environment() {
         MANAGED_SOURCE="uv"
     elif [ "$has_poetry_project" = "yes" ]; then
         MANAGED_SOURCE="poetry"
-    else
-        return 0
     fi
+}
+
+bootstrap_find_managed_environment() {
+    MANAGED_RESULT="none"
+    bootstrap_select_manager
+    [ -n "$MANAGED_SOURCE" ] || return 0
 
     if ! command -v "$MANAGED_SOURCE" >/dev/null 2>&1; then
         MANAGED_RESULT="unavailable"
         return 0
+    fi
+    if [ "$MANAGED_SOURCE" = "poetry" ] && [ -n "$BOOTSTRAP_POETRY_SOURCE" ]; then
+        local source_log="${BOOTSTRAP_TMP_ROOT}/poetry-source.log"
+        poetry source show --no-interaction --no-ansi "$BOOTSTRAP_POETRY_SOURCE" \
+            >"$source_log" 2>&1 || true
+        if ! awk -F: -v expected="$BOOTSTRAP_POETRY_SOURCE" '
+            $1 ~ /^[[:space:]]*name[[:space:]]*$/ {
+                value = $2
+                sub(/^[[:space:]]*/, "", value)
+                sub(/[[:space:]]*$/, "", value)
+                if (value == expected) found = 1
+            }
+            END { exit(found ? 0 : 1) }
+        ' "$source_log"; then
+            MANAGED_RESULT="poetry_source_missing"
+            return 0
+        fi
     fi
     if bootstrap_managed_python_info "$MANAGED_SOURCE"; then
         MANAGED_RESULT="found"
@@ -380,7 +454,8 @@ print(f"{requirement}|{state}")
 }
 
 bootstrap_sdk_version() {
-    "$1" -c 'import importlib.metadata, datalens_sdk; print(importlib.metadata.version("datalens-sdk"))' 2>/dev/null
+    "$1" -c 'import importlib, importlib.metadata, sys; importlib.import_module(sys.argv[2]); print(importlib.metadata.version(sys.argv[1]))' \
+        "$BOOTSTRAP_DISTRIBUTION" "$BOOTSTRAP_IMPORT_MODULE" 2>/dev/null
 }
 
 bootstrap_compare_versions() {
@@ -464,6 +539,20 @@ bootstrap_merge_requirements() {
     BOOTSTRAP_REQUIRES_PYTHON="$merged"
 }
 
+bootstrap_extract_index_version() {
+    awk -v distribution="$BOOTSTRAP_DISTRIBUTION" '
+        index($0, distribution " (") == 1 && $0 ~ /\)$/ {
+            value = $0
+            value = substr(value, length(distribution) + 3)
+            sub(/\)$/, "", value)
+            if (value ~ /^[0-9A-Za-z][0-9A-Za-z.!+_-]*$/) {
+                print value
+                exit
+            }
+        }
+    ' "$1"
+}
+
 bootstrap_probe() {
     local base_python="$1"
     local probe_mode="${2:-auto}"
@@ -485,19 +574,9 @@ bootstrap_probe() {
     if [ "$base_python" = "$BOOTSTRAP_PYTHON" ] && [ -d "$BOOTSTRAP_VENV" ]; then
         probe_virtualenv="$BOOTSTRAP_VENV"
     fi
-    if VIRTUAL_ENV="$probe_virtualenv" "$PROBE_PYTHON" -m pip index versions datalens-sdk \
+    if VIRTUAL_ENV="$probe_virtualenv" "$PROBE_PYTHON" -m pip index versions "$BOOTSTRAP_DISTRIBUTION" \
         --disable-pip-version-check --no-input --no-color -v >"$query_log" 2>&1; then
-        PROBE_SDK_VERSION="$(awk '
-            /^datalens-sdk \([^()]+\)$/ {
-                value = $0
-                sub(/^datalens-sdk \(/, "", value)
-                sub(/\)$/, "", value)
-                if (value ~ /^[0-9A-Za-z][0-9A-Za-z.!+_-]*$/) {
-                    print value
-                    exit
-                }
-            }
-        ' "$query_log")"
+        PROBE_SDK_VERSION="$(bootstrap_extract_index_version "$query_log")"
         if [ -z "$PROBE_SDK_VERSION" ]; then
             PROBE_RESULT="failed"
             PROBE_REASON="package_index_query_failed"
@@ -511,15 +590,36 @@ bootstrap_probe() {
     if [ -n "$PROBE_REQUIREMENTS" ]; then
         PROBE_RESULT="incompatible"
         PROBE_REASON="python_incompatible"
-    else
-        PROBE_RESULT="failed"
-        PROBE_REASON="package_index_query_failed"
+        return 0
     fi
+
+    # Some older pip/index combinations hide every release that has an
+    # incompatible Requires-Python without emitting the requirement. Retry the
+    # same read-only query without Python filtering: success proves that the
+    # package source is reachable and that this interpreter is the mismatch.
+    if VIRTUAL_ENV="$probe_virtualenv" "$PROBE_PYTHON" -m pip index versions "$BOOTSTRAP_DISTRIBUTION" \
+        --disable-pip-version-check --no-input --no-color --ignore-requires-python \
+        >"$query_log" 2>&1; then
+        PROBE_SDK_VERSION="$(bootstrap_extract_index_version "$query_log")"
+        if [ -n "$PROBE_SDK_VERSION" ]; then
+            PROBE_RESULT="incompatible"
+            PROBE_REASON="python_incompatible"
+            return 0
+        fi
+    fi
+
+    PROBE_RESULT="failed"
+    PROBE_REASON="package_index_query_failed"
 }
 
 bootstrap_extract_managed_version() {
-    awk '
-    tolower($0) ~ /datalens[-_]sdk/ {
+    awk -v distribution="$BOOTSTRAP_DISTRIBUTION" '
+    function normalize(value) {
+        value = tolower(value)
+        gsub(/[-_.]+/, "-", value)
+        return value
+    }
+    index(normalize($0), normalize(distribution)) {
         line = $0
         gsub(/[()^~<>=,]/, " ", line)
         count = split(line, parts, /[^0-9A-Za-z.!+_-]+/)
@@ -546,9 +646,9 @@ bootstrap_probe_managed_ownership() {
         uv)
             uv sync --dry-run --python "$base_python" --no-progress --color never \
                 >"$query_log" 2>&1 || return 0
-            grep -Eiq '^[[:space:]]*-[[:space:]]+datalens[-_]sdk([=[:space:]]|$)' "$query_log" \
+            grep -Eiq "^[[:space:]]*-[[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([=[:space:]]|$)" "$query_log" \
                 && sdk_remove="yes"
-            grep -Eiq '^[[:space:]]*[+][[:space:]]+datalens[-_]sdk([=[:space:]]|$)' "$query_log" \
+            grep -Eiq "^[[:space:]]*[+][[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([=[:space:]]|$)" "$query_log" \
                 && sdk_add="yes"
             if [ "$sdk_add" = "yes" ]; then
                 MANAGED_OWNERSHIP_RESULT="drifted"
@@ -561,10 +661,10 @@ bootstrap_probe_managed_ownership() {
         poetry)
             poetry install --sync --dry-run --no-interaction --no-ansi \
                 >"$query_log" 2>&1 || return 0
-            if grep -Eiq '(installing|updating|downgrading)[[:space:]]+datalens[-_]sdk([[:space:](]|$)' \
+            if grep -Eiq "(installing|updating|downgrading)[[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([[:space:](]|$)" \
                 "$query_log"; then
                 MANAGED_OWNERSHIP_RESULT="drifted"
-            elif grep -Eiq 'removing[[:space:]]+datalens[-_]sdk([[:space:](]|$)' "$query_log"; then
+            elif grep -Eiq "removing[[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([[:space:](]|$)" "$query_log"; then
                 MANAGED_OWNERSHIP_RESULT="unowned"
             else
                 MANAGED_OWNERSHIP_RESULT="owned"
@@ -591,7 +691,7 @@ bootstrap_probe_managed() {
 
     case "$MANAGED_SOURCE" in
         uv)
-            uv lock --dry-run --upgrade-package datalens-sdk --python "$base_python" \
+            uv lock --dry-run --upgrade-package "$BOOTSTRAP_DISTRIBUTION" --python "$base_python" \
                 --no-progress --color never >"$query_log" 2>&1 || {
                     PROBE_RESULT="failed"
                     PROBE_REASON="package_index_query_failed"
@@ -599,8 +699,14 @@ bootstrap_probe_managed() {
                 }
             ;;
         poetry)
-            poetry add --dry-run --no-interaction --no-ansi datalens-sdk@latest \
-                >"$query_log" 2>&1 || {
+            if [ -n "$BOOTSTRAP_POETRY_SOURCE" ]; then
+                poetry add --dry-run --no-interaction --no-ansi \
+                    "${BOOTSTRAP_DISTRIBUTION}@latest" --source "$BOOTSTRAP_POETRY_SOURCE" \
+                    >"$query_log" 2>&1
+            else
+                poetry add --dry-run --no-interaction --no-ansi \
+                    "${BOOTSTRAP_DISTRIBUTION}@latest" >"$query_log" 2>&1
+            fi || {
                     PROBE_RESULT="failed"
                     PROBE_REASON="package_index_query_failed"
                     return 0
@@ -704,7 +810,7 @@ bootstrap_find_compatible_alternative() {
                 return 2
                 ;;
         esac
-        bootstrap_note "Probing Python ${version} from ${source} for datalens-sdk compatibility..."
+        bootstrap_note "Probing Python ${version} from ${source} for ${BOOTSTRAP_DISTRIBUTION} compatibility..."
         bootstrap_probe "$path" isolated
         bootstrap_merge_requirements "$PROBE_REQUIREMENTS"
         case "$PROBE_RESULT" in
@@ -737,16 +843,16 @@ bootstrap_install_project() {
     local target_version="${2:-}"
     local install_log="${BOOTSTRAP_TMP_ROOT}/project-install.log"
     local plan_log="${BOOTSTRAP_TMP_ROOT}/poetry-install-plan.log"
-    local requirement="datalens-sdk"
+    local requirement="$BOOTSTRAP_DISTRIBUTION"
     local action="Installing"
     [ "$BOOTSTRAP_ACTION" = "upgrade" ] && action="Upgrading"
-    [ -n "$target_version" ] && requirement="datalens-sdk==${target_version}"
+    [ -n "$target_version" ] && requirement="${BOOTSTRAP_DISTRIBUTION}==${target_version}"
     [ -n "$target_version" ] || [ -n "$MANAGED_SOURCE" ] || return 1
     if ! bootstrap_environment_identity "$project_python" "$BOOTSTRAP_VENV"; then
         BOOTSTRAP_REASON="venv_invalid"
         return 2
     fi
-    bootstrap_note "${action} datalens-sdk into ${BOOTSTRAP_VENV}..."
+    bootstrap_note "${action} ${BOOTSTRAP_DISTRIBUTION} into ${BOOTSTRAP_VENV}..."
     case "$MANAGED_SOURCE" in
         uv)
             if [ -z "$target_version" ] && [ "$MANAGED_OWNERSHIP_RESULT" = "drifted" ]; then
@@ -766,14 +872,24 @@ bootstrap_install_project() {
                     >"$plan_log" 2>&1; then
                     return 1
                 fi
-                if grep -Eiq '(installing|updating|downgrading)[[:space:]]+datalens[-_]sdk([[:space:](]|$)' \
+                if grep -Eiq "(installing|updating|downgrading)[[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([[:space:](]|$)" \
                     "$plan_log"; then
                     poetry install --no-root --no-interaction --no-ansi >"$install_log" 2>&1 || return 1
                 else
-                    poetry add "$requirement" >"$install_log" 2>&1 || return 1
+                    if [ -n "$BOOTSTRAP_POETRY_SOURCE" ]; then
+                        poetry add "$requirement" --source "$BOOTSTRAP_POETRY_SOURCE" \
+                            >"$install_log" 2>&1 || return 1
+                    else
+                        poetry add "$requirement" >"$install_log" 2>&1 || return 1
+                    fi
                 fi
             else
-                poetry add "$requirement" >"$install_log" 2>&1 || return 1
+                if [ -n "$BOOTSTRAP_POETRY_SOURCE" ]; then
+                    poetry add "$requirement" --source "$BOOTSTRAP_POETRY_SOURCE" \
+                        >"$install_log" 2>&1 || return 1
+                else
+                    poetry add "$requirement" >"$install_log" 2>&1 || return 1
+                fi
             fi
             bootstrap_managed_python_info poetry || return 1
             project_python="$BOOTSTRAP_PYTHON"
@@ -815,13 +931,14 @@ bootstrap_emit_install_decision() {
 case "$#" in
     0) : ;;
     1)
-        if [ "$1" = "--install-sdk" ]; then
-            BOOTSTRAP_ACTION="install"
-        else
-            BOOTSTRAP_REASON="invalid_arguments"
-            bootstrap_emit
-            exit 0
-        fi
+        case "$1" in
+            --install-sdk) BOOTSTRAP_ACTION="install" ;;
+            *)
+                BOOTSTRAP_REASON="invalid_arguments"
+                bootstrap_emit
+                exit 0
+                ;;
+        esac
         ;;
     2)
         case "$1" in
@@ -846,7 +963,13 @@ case "$#" in
         ;;
 esac
 
-BOOTSTRAP_TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/datalens-sdk-bootstrap.XXXXXX")" || {
+if ! bootstrap_validate_profile; then
+    BOOTSTRAP_REASON="invalid_profile"
+    bootstrap_emit
+    exit 0
+fi
+
+BOOTSTRAP_TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/${BOOTSTRAP_TMP_PREFIX}-bootstrap.XXXXXX")" || {
     BOOTSTRAP_REASON="venv_create_failed"
     bootstrap_emit
     exit 0
@@ -866,6 +989,12 @@ case "$MANAGED_RESULT" in
     invalid)
         BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
         BOOTSTRAP_REASON="managed_environment_invalid"
+        bootstrap_emit
+        exit 0
+        ;;
+    poetry_source_missing)
+        BOOTSTRAP_PYTHON_SOURCE="$MANAGED_SOURCE"
+        BOOTSTRAP_REASON="poetry_source_configuration_required"
         bootstrap_emit
         exit 0
         ;;
@@ -946,7 +1075,7 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
         case "$MANAGED_OWNERSHIP_RESULT" in
             owned) : ;;
             unowned|drifted)
-                bootstrap_note "The installed datalens-sdk does not exactly match ${MANAGED_SOURCE} synchronization; manager reconciliation is required."
+                bootstrap_note "The installed ${BOOTSTRAP_DISTRIBUTION} does not exactly match ${MANAGED_SOURCE} synchronization; manager reconciliation is required."
                 BOOTSTRAP_SDK_VERSION=""
                 BOOTSTRAP_AVAILABLE_SDK_VERSION=""
                 ;;
@@ -961,7 +1090,7 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
     if [ -n "$BOOTSTRAP_SDK_VERSION" ]; then
         BOOTSTRAP_VENV_STATE="reused"
         BOOTSTRAP_SDK="installed"
-        bootstrap_note "Checking the installed datalens-sdk ${BOOTSTRAP_SDK_VERSION} for a newer compatible release..."
+        bootstrap_note "Checking the installed ${BOOTSTRAP_DISTRIBUTION} ${BOOTSTRAP_SDK_VERSION} for a newer compatible release..."
         if [ -n "$MANAGED_SOURCE" ]; then
             bootstrap_probe_managed "$BOOTSTRAP_PYTHON" "$BOOTSTRAP_SDK_VERSION"
         else
@@ -1070,7 +1199,7 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
         exit 0
     fi
 
-    bootstrap_note "Probing the existing .venv interpreter for datalens-sdk compatibility..."
+    bootstrap_note "Probing the existing .venv interpreter for ${BOOTSTRAP_DISTRIBUTION} compatibility..."
     bootstrap_probe "$BOOTSTRAP_PYTHON"
     bootstrap_merge_requirements "$PROBE_REQUIREMENTS"
     case "$PROBE_RESULT" in
@@ -1150,7 +1279,7 @@ if [ -n "$DEFAULT_PYTHON" ] && bootstrap_python_info "$DEFAULT_PYTHON"; then
                 CANDIDATE_PATH=""
                 ;;
             compatible)
-                bootstrap_note "Probing default Python ${CANDIDATE_VERSION} for datalens-sdk compatibility..."
+                bootstrap_note "Probing default Python ${CANDIDATE_VERSION} for ${BOOTSTRAP_DISTRIBUTION} compatibility..."
                 bootstrap_probe "$DEFAULT_PYTHON" isolated
                 bootstrap_merge_requirements "$PROBE_REQUIREMENTS"
                 case "$PROBE_RESULT" in

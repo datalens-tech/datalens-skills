@@ -1,0 +1,17 @@
+.dashboard {
+    padding: 0 var(--g-spacing-4) 40px;
+    font: var(--g-text-body-1-font);
+    color: var(--g-color-text-primary);
+    background-color: var(--dl-color-dashboard-background);
+}
+
+.dashboard-title {
+    padding: var(--g-spacing-2) 0 var(--g-spacing-1);
+    font: var(--g-text-header-2-font);
+}
+
+.dashboard-widget {
+    padding: var(--g-spacing-4);
+    background: var(--dl-color-widget-background);
+    border-radius: 12px;
+}

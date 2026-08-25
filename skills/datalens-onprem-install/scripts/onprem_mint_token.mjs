@@ -6,6 +6,9 @@
 //   DL_HOST=https://<domain> DL_SA_ID=<sa-id> DL_KEY_ID=<key-id> \
 //   DL_KEY_PATH=<key.pem> node onprem_mint_token.mjs
 //
+// With a self-signed certificate (the skill's default `--ingress-tls-gen`), add DL_INSECURE=1
+// to skip TLS verification — otherwise Node's fetch rejects the cert.
+//
 // Prints the accessToken to stdout. Diagnostics go to stderr.
 import {readFileSync} from 'node:fs';
 import {createSign, constants} from 'node:crypto';
@@ -15,6 +18,10 @@ const SA_ID = process.env.DL_SA_ID;
 const KEY_ID = process.env.DL_KEY_ID;
 const KEY_PATH = process.env.DL_KEY_PATH;
 const API_VERSION = process.env.DL_API_VERSION || '2';
+const INSECURE = /^(1|true|yes)$/i.test(process.env.DL_INSECURE || '');
+
+// Must be set before the first TLS connection; Node reads it per handshake.
+if (INSECURE) process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 for (const [name, val] of [['DL_HOST', HOST], ['DL_SA_ID', SA_ID], ['DL_KEY_ID', KEY_ID], ['DL_KEY_PATH', KEY_PATH]]) {
     if (!val) {
@@ -63,5 +70,12 @@ async function main() {
 
 main().catch((e) => {
     process.stderr.write(`[mint] error: ${e.stack || e}\n`);
+    // fetch() wraps the real reason in e.cause — surface it, otherwise a TLS/DNS failure reads as
+    // an opaque "fetch failed".
+    if (e && e.cause) process.stderr.write(`[mint] cause: ${e.cause.stack || e.cause}\n`);
+    const reason = String((e && e.cause) || e);
+    if (/self.?signed|DEPTH_ZERO_SELF_SIGNED_CERT|unable to verify/i.test(reason)) {
+        process.stderr.write('[mint] hint: self-signed certificate — re-run with DL_INSECURE=1\n');
+    }
     process.exit(1);
 });

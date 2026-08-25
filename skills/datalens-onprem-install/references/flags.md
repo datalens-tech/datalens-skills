@@ -77,9 +77,10 @@ skill's single-node install.
 ## Re-running init.sh
 
 Assume flags **do not accumulate** between runs: a restart applies whatever is passed now. The
-previous run's parameters are in `.values.debug.yaml` (created after the deploy, a hidden dot-file,
-no secrets). When adding a feature, repeat the previous flags + the new ones, and verify the result
-against a fresh `.values.debug.yaml`.
+previous run's parameters are in `.values.debug.yaml` (created after the deploy, a hidden dot-file).
+It normally holds no secrets, but tokens passed at install (`--yandex-map-token`, `--ai-api-token`)
+can end up in it — check before quoting it wholesale. When adding a feature, repeat the previous
+flags + the new ones, and verify the result against a fresh `.values.debug.yaml`.
 
 **Non-interactive run:** add `--yes` — otherwise `init.sh` hangs on the helm-diff confirmation
 (`... do you want to continue [Y/n]?`), waiting for input on a disconnected stdin.

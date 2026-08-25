@@ -42,10 +42,13 @@ A ready-made script (needs node ≥ 18, no dependencies):
 
 ```bash
 DL_HOST=https://<domain> DL_SA_ID=<sa-id> DL_KEY_ID=<key-id> \
-DL_KEY_PATH=<path to .pem> node scripts/onprem_mint_token.mjs
+DL_KEY_PATH=<path to .pem> DL_INSECURE=1 node scripts/onprem_mint_token.mjs
 ```
 
-Prints the accessToken to stdout, diagnostics to stderr.
+Prints the accessToken to stdout, diagnostics to stderr. **`DL_INSECURE=1`** skips TLS
+verification — required with the self-signed certificate from `--ingress-tls-gen` (the skill's
+default), since Node's `fetch` otherwise rejects it with an opaque `fetch failed` (the script logs
+`e.cause` and hints at this). Drop it if the host has a CA-signed certificate.
 
 **Where to run it.** On any machine with node ≥ 18 that can reach the API. The target VM often has
 no node — then run it locally. If the domain does not resolve locally, add it to hosts, or sign the

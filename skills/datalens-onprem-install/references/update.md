@@ -50,7 +50,9 @@ curl -L "<url>" -o datalens-enterprise.tar
 tar -xvf datalens-enterprise.tar --directory ./datalens-enterprise
 ```
 
-Unpack **into the same folder, over the old version**.
+Unpack **into the same folder, over the old version**. Run these from the **parent** directory
+(the one containing the `datalens-enterprise` folder); step 5 then runs `./init.sh` from **inside**
+that folder.
 
 ## 5. Update and verify
 

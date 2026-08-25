@@ -14,6 +14,7 @@ HTTP API, or an MCP server.
 |-------|--------------|
 | [`datalens`](skills/datalens/SKILL.md) | Start here. What DataLens is, how its installations differ, the entity model, and which interface — SDK, MCP, API, UI — fits the task. Routes to the rest. |
 | [`datalens-html-pages`](skills/datalens-html-pages/SKILL.md) | Author, sanitize, validate, and publish standalone HTML pages (AI-generated reports) that render in a sandboxed iframe under an injected CSP. |
+| [`datalens-onprem-install`](skills/datalens-onprem-install/SKILL.md) | Install DataLens On-premises on single-node K3s — a staged, resumable flow: sizing, distributive, feature flags, admin password, and Public API + service account, plus update and uninstall modes. |
 | [`datalens-sdk`](skills/datalens-sdk/SKILL.md) | Drive DataLens from Python — connections, datasets, charts, dashboards. Loads its instructions from the installed SDK package so they always match the installed version. |
 | [`datalens-yc-rls-resolve`](skills/datalens-yc-rls-resolve/SKILL.md) | Resolve Yandex Cloud users and groups into DataLens RLSv2 subject IDs, or convert a legacy `rls` configuration to `rls2`. |
 
@@ -26,6 +27,7 @@ detecting it automatically:
 ```bash
 npx skills add datalens-tech/datalens-skills --skill datalens
 npx skills add datalens-tech/datalens-skills --skill datalens-html-pages
+npx skills add datalens-tech/datalens-skills --skill datalens-onprem-install
 npx skills add datalens-tech/datalens-skills --skill datalens-sdk
 npx skills add datalens-tech/datalens-skills --skill datalens-yc-rls-resolve
 ```

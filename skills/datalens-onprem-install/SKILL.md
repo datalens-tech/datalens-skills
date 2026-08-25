@@ -57,8 +57,9 @@ Determine the state and jump to the first unfinished stage:
 | instance running, engineer asks to update | update mode (`references/update.md`) |
 | engineer asks to remove the instance | uninstall mode (see below) |
 
-`.values.debug.yaml` is the source of truth for the previous run's parameters (a hidden dot-file,
-no secrets).
+`.values.debug.yaml` is the source of truth for the previous run's parameters (a hidden dot-file).
+It normally holds no secrets, but an install run with `--yandex-map-token` or `--ai-api-token` can
+land those values in it — check before quoting the file wholesale.
 
 ## Stages
 

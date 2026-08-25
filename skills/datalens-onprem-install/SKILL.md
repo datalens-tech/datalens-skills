@@ -7,9 +7,9 @@ description: >-
   service account; plus separate modes to update an instance (init.sh --update) and to uninstall
   it (k3s-uninstall). Use it when asked to install or deploy DataLens on-premises (установить или
   развернуть DataLens on-premise / онпрем), resume an interrupted installation, size a machine for
-  an instance, update or remove an existing instance, or enable the Public API on-premise. NOT for
-  Yandex Cloud or the internal Yandex Team installation, and not for building charts or dashboards
-  (that is `datalens-sdk`).
+  an instance, update or remove an existing instance, enable the Public API, or configure external
+  login providers (LDAP/OIDC) on-premise. NOT for Yandex Cloud or the internal Yandex Team
+  installation, and not for building charts or dashboards (that is `datalens-sdk`).
 license: Apache-2.0
 metadata:
   domain: datalens
@@ -26,8 +26,8 @@ PostgreSQL/ClickHouse/Redis/MinIO (`init.sh --k3s-install`).
   confirmation. You can stop at any point — no state is stored anywhere; when you return, the
   skill re-detects where you left off (see "Re-detection").
 - Read a reference only at its stage: `references/sizing.md` (stage 1), `references/flags.md`
-  (stage 4), `references/api-setup.md` (stage 7), `references/update.md` (update mode). Do not read
-  them ahead of time.
+  (stage 4), `references/api-setup.md` (stage 7), `references/auth-providers.md` (stage 8),
+  `references/update.md` (update mode). Do not read them ahead of time.
 - Never write secrets (the admin password, tokens, `.pem` keys) into project files, and never
   commit them.
 
@@ -102,7 +102,10 @@ the inputs: the domain for `--ingress-domain` (no domain — default `datalens.e
 entry), TLS (self-signed `--ingress-tls-gen` or your own certificates), and, for the full option,
 whether there is a Yandex Maps token (without a token `--yandex-map` runs on the free tier ~1000
 requests/day but needs network access to the Maps API; in an air-gapped environment drop the flag).
-Checkpoint: show the assembled `./init.sh ...` command in full and get confirmation.
+If the engineer wants login through an external IdP (LDAP / OIDC) from the start, this is also set
+here via `--auth-providers-config` — see stage 8 and `references/auth-providers.md` (it can equally
+be added later to a running instance). Checkpoint: show the assembled `./init.sh ...` command in
+full and get confirmation.
 
 ### 5. Install
 
@@ -132,6 +135,17 @@ Offer to set up programmatic API access. If agreed — read `references/api-setu
 enabling `--public-api` (if not already on), the service account (manual steps in the UI), minting
 an accessToken with `scripts/onprem_mint_token.mjs`, verification, and optionally wiring up the MCP
 server.
+
+### 8. External authentication providers — LDAP / OIDC (optional)
+
+If the engineer wants login through an external IdP (LDAP or OpenID Connect; SAML is not
+supported) — read `references/auth-providers.md` and follow it: fill a JSON provider config (a
+template ships at `./help/auth-provider-config.example.json`), pass it via
+`--auth-providers-config <path>`, optionally restrict login to external IdP only
+(`features.auth.local: false`), and verify the provider appears on the login page. This can be set
+at first install (stage 4) or added later to a running instance via a re-run (see "Speeding up a
+redeploy" in `references/flags.md`). The config holds bind credentials / client secrets — treat it
+as a secret.
 
 ## Mode: update (only on an explicit request)
 

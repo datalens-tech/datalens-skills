@@ -61,6 +61,35 @@ Disabling embedded components (`--disable-postgres`, `--disable-clickhouse`, `--
 `--disable-s3`, `--disable-temporal`) is the external-cluster scenario, out of scope for this
 skill's single-node install.
 
+## Deploying via a custom values.yaml (dependencies are NOT auto-enabled)
+
+The presets and the flag table above assume you drive the install with **init.sh flags**, which
+turn a feature on *and* pull in the infrastructure it needs. If instead you hand-edit a custom
+`values.yaml` (the declarative approach the docs recommend for production), two things change:
+
+- **You enable each feature's dependencies yourself.** Flipping a feature to `true` in the file
+  does not bring up its infra — you must also set the `infra.*` toggles below. A feature enabled
+  without its dependency hangs, and the deploy fails with **`context deadline exceeded`** (the pod
+  waits on infra that never comes up). This is the most common cause of that error.
+- **`values.yaml` overrides init.sh arguments.** Adding a flag on the command line will not fix a
+  feature the file leaves half-configured — the file wins.
+
+Features live under `features.<name>.enabled`; enable each one's dependencies too:
+
+| Feature (flag) | Also enable in `values.yaml` |
+|---|---|
+| `files` (`--files`) | `infra.clickhouse.enabled`, `infra.redis.enabled`, `infra.s3.enabled` |
+| `usage_tracking` (`--usage-tracking`) | `infra.clickhouse.enabled`, `infra.fluent_bit.enabled`, `infra.temporal.enabled` |
+| `background_exports` (`--background-exports`) | `infra.redis.enabled`, `infra.s3.enabled` |
+| `cache` (`--cache`) | `infra.redis.enabled` |
+| `export` (`--export`) | `features.meta_manager.enabled`, `features.ui_api.enabled`, `infra.temporal.enabled` |
+| `editor` (`--editor`) | no extra infra |
+
+`infra.postgres.enabled` defaults to `true`; ClickHouse / Redis / S3 / Temporal / Fluent Bit
+default to `false`. With no external services the distributive brings up embedded ones (e.g. MinIO
+as S3). Full dependency notes:
+https://datalens.ru/on-premises/docs/en/cookbook/configuration.html#files
+
 ## Other useful arguments
 
 - `--yes` — skip all interactive confirmations. **Required for a non-interactive run** (background,

@@ -121,7 +121,9 @@ done:
   manually: `curl -sk --resolve <domain>:443:127.0.0.1 https://<domain>/` — the UI responds
 
 If the install fails — show the tail of the output, offer diagnostics (`./init.sh --stern` for
-logs), and do not silently restart.
+logs), and do not silently restart. A `context deadline exceeded` failure on a custom `values.yaml`
+deploy usually means an enabled feature is missing its `infra.*` dependency — see "Deploying via a
+custom values.yaml" in `references/flags.md`.
 
 ### 6. Admin password
 

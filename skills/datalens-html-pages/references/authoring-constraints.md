@@ -15,10 +15,10 @@ state-in-memory.**
 | `<img>` | `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `data:`, `blob:` |
 | `<audio>` / `<video>` / `<source>` | `data:`, `blob:` only |
 | `fetch` / XHR | `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net` only — used by the Maps API internally |
-| Workers | `blob:` only (Yandex Maps v3 needs them) |
 
-Yandex Maps (JS API v2.1 or v3 from `api-maps.yandex.ru`) is the one external service the page may
-talk to. Load it with the user's API key; do not route it through a CDN mirror.
+Yandex Maps JS API 2.1 from `api-maps.yandex.ru` is the one external service the page may talk
+to. Do not route it through a CDN mirror, and do not use v3 (it needs an API key to load and
+workers to render).
 
 Rewrite off-allowlist libraries through an allowed mirror:
 
@@ -35,7 +35,7 @@ Rewrite off-allowlist libraries through an allowed mirror:
 |----------|---------|------------|
 | Storage | `localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, Cache API | in-memory JS variables |
 | Network | `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `navigator.sendBeacon` to any host but Yandex Maps | **inline the data** into the page |
-| Workers | `new Worker('<url>')`, `SharedWorker`, `navigator.serviceWorker` | do work on the main thread (blob workers run, but there is rarely a reason to write one) |
+| Workers | `new Worker`, `SharedWorker`, `navigator.serviceWorker` | do work on the main thread |
 | Popups/dialogs | `window.open`, `alert`, `confirm`, `prompt` | render UI in the page |
 | Navigation / links | navigating the parent (`parent.location`, `top.location`); ordinary `<a href>` link navigation | post `{code:'OPEN_URL', data:{url}}` on click (below) |
 | Downloads | `<a download>`, programmatic blob downloads | post `{code:'EXPORT', data:{…}}` (below) |

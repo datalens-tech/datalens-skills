@@ -79,7 +79,7 @@ API_PATTERNS = [
     (re.compile(r"sendBeacon"),
      "blocked-network", "navigator.sendBeacon is blocked (connect-src allows only Yandex Maps hosts)"),
     (re.compile(r"\bnew\s+(?:Shared)?Worker\s*\("),
-     "blocked-worker", "workers are blocked unless created from a blob: URL (worker-src blob:)"),
+     "blocked-worker", "workers are blocked (worker-src 'none')"),
     (re.compile(r"serviceWorker"),
      "blocked-worker", "service workers are blocked in this sandbox"),
     (re.compile(r"\b(?:alert|confirm|prompt)\s*\("),

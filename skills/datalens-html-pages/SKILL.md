@@ -36,8 +36,8 @@ CDNs, and most browser APIs are blocked.
   same-origin access.
 - **Injected CSP** (you do **not** write it — the platform prepends it, idempotently):
   `default-src 'none'` with a small allowlist for `script`/`style`/`font`/`img`/`media`,
-  `connect-src` and `worker-src blob:` opened only as far as Yandex Maps needs, and
-  `form-action`, `frame-src`, `object-src`, `base-uri` all `'none'`.
+  `connect-src` opened only to the Yandex Maps hosts, and `form-action`, `frame-src`,
+  `object-src`, `worker-src`, `base-uri` all `'none'`.
   Full policy in [references/csp-and-sandbox.md](references/csp-and-sandbox.md).
 - **Served** from a presigned GET that expires in **10–30 seconds**, after a server-side
   permission check. Theme/language ride along as signed query params.
@@ -63,14 +63,16 @@ Load Google Fonts the standard way (`<link>` CSS from `fonts.googleapis.com`, fo
 `fonts.gstatic.com`). Mirror off-allowlist libraries (unpkg, plot.ly, d3js.org, jQuery) through
 jsdelivr/cdnjs.
 
-**Yandex Maps** works out of the box: load the JS API from `api-maps.yandex.ru` (v2.1 or v3) with
-the user's API key and render into a fixed-height container. Scripts, tiles, API calls and the
-blob workers v3 uses are all allowed. Everything else about the sandbox still holds — your own
-data is inlined, not fetched.
+**Yandex Maps JS API 2.1** works out of the box: load it from `api-maps.yandex.ru` (with the
+user's API key when they have one) and render into a fixed-height container. Scripts, tiles and
+the API's own requests are allowed. Use **2.1, not v3** — v3 refuses to load without a key and
+needs workers the sandbox blocks. Everything else about the sandbox still holds — your own data
+is inlined, not fetched.
 
 ```html
-<script src="https://api-maps.yandex.ru/v3/?apikey=YOUR_KEY&lang=ru_RU"></script>
+<script src="https://api-maps.yandex.ru/2.1/?apikey=YOUR_KEY&lang=ru_RU"></script>
 <div id="map" style="height: 400px"></div>
+<script>ymaps.ready(() => new ymaps.Map('map', {center: [55.76, 37.64], zoom: 10}));</script>
 ```
 
 **Blocked — do not use** (they throw or silently fail):
@@ -82,7 +84,7 @@ data is inlined, not fetched.
   page** instead of fetching it.
 - **Frames/objects/forms:** nested `<iframe>`, `<object>`, `<embed>`, `<form>` submission,
   `<base>`.
-- **Workers loaded from a URL, popups, dialogs, downloads, camera/geolocation/fullscreen**, navigating the parent
+- **Workers, popups, dialogs, downloads, camera/geolocation/fullscreen**, navigating the parent
   frame, and ordinary **link navigation** — an `<a href>` won't open on its own; route clicks
   through `OPEN_URL` (see *Opening links* below).
 
@@ -185,7 +187,7 @@ that must stay private into the page** — it is a report, not a trusted app sur
 | "localStorage is not available" / throws | storage API in sandbox | keep state in memory |
 | Fonts don't render | font host off-allowlist | Google Fonts (`fonts.googleapis.com` CSS + `fonts.gstatic.com` files) or jsdelivr/cdnjs |
 | Image is blank | `http://` or off-allowlist host | use `yastatic.net`, `data:`, or `blob:` |
-| Yandex map is blank | API loaded from a mirror, or the container has no height | load from `api-maps.yandex.ru` and give the container an explicit height |
+| Yandex map is blank | Maps v3 used, API loaded from a mirror, or the container has no height | use JS API 2.1 from `api-maps.yandex.ru` and give the container an explicit height |
 | Download button does nothing | download APIs blocked | post `{code:'EXPORT', data:{name,mime,data}}` to the parent |
 | Clicking a link does nothing | links don't navigate in the sandbox | intercept the click and post `{code:'OPEN_URL', data:{url}}` |
 | Page renders as plain text / broken head | wrapping markdown code fences | remove the ``` fences |

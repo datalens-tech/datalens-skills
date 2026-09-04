@@ -31,12 +31,13 @@ idempotent). You do **not** author this; you author *against* it:
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
-  script-src https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://yastatic.net 'unsafe-inline' 'unsafe-eval';
+  script-src https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://yastatic.net https://api-maps.yandex.ru https://*.api-maps.yandex.ru https://*.maps.yandex.net 'unsafe-inline' 'unsafe-eval';
   style-src  https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://yastatic.net https://fonts.googleapis.com 'unsafe-inline';
-  img-src    https://yastatic.net data: blob:;
+  img-src    https://yastatic.net https://api-maps.yandex.ru https://*.api-maps.yandex.ru https://*.maps.yandex.net https://yandex.ru/clck/ data: blob:;
   font-src   https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com data:;
   media-src  data: blob:;
-  connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; base-uri 'none'">
+  connect-src https://api-maps.yandex.ru https://*.api-maps.yandex.ru https://*.maps.yandex.net;
+  form-action 'none'; frame-src 'none'; object-src 'none'; worker-src blob:; base-uri 'none'">
 ```
 
 Notes / rationale:
@@ -48,21 +49,30 @@ Notes / rationale:
   files from `fonts.gstatic.com` (in `font-src`).
 - **KaTeX / MathJax** `woff2` files come from jsdelivr/cdnjs — that is why those hosts are in
   `font-src`.
-- **`connect-src 'none'`** kills `fetch`/XHR/WebSocket/EventSource/`sendBeacon` — the page cannot
-  talk to the network. Inline the data.
-- **`worker-src 'none'`** is explicit so it can't fall back to `script-src`.
-- `img-src` is `yastatic.net` + `data:` + `blob:`; `media-src` is `data:`/`blob:` only.
+- **`connect-src`** lists only the Yandex Maps hosts, so the JS API can fetch its config and
+  vector tiles. For everything else `fetch`/XHR/WebSocket/EventSource/`sendBeacon` still fail —
+  the page cannot reach your data over the network. Inline the data.
+- **`worker-src blob:`** exists for Yandex Maps v3, which renders vector tiles in workers built
+  from blob URLs. A worker loaded from a URL (`new Worker('x.js')`) is still blocked. Blob workers
+  inherit this same CSP, so they gain no extra network access.
+- **Yandex Maps** (`api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`) is allowed in
+  `script-src`, `img-src` (raster tiles, icons) and `connect-src`. `yandex.ru/clck/` in `img-src`
+  is the API's usage beacon; you never reference it yourself.
+- `img-src` is `yastatic.net` + the maps hosts + `data:` + `blob:`; `media-src` is `data:`/`blob:`
+  only.
 
 ### Resource allowlist (what the linter checks)
 
 | Directive | Hosts / schemes |
 |-----------|-----------------|
-| `script-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, inline |
-| `style-src` | same + `fonts.googleapis.com`, inline |
+| `script-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, inline |
+| `style-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, `fonts.googleapis.com`, inline |
 | `font-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `fonts.gstatic.com`, `data:` |
-| `img-src` | `yastatic.net`, `data:`, `blob:` |
+| `img-src` | `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `yandex.ru/clck/`, `data:`, `blob:` |
 | `media-src` | `data:`, `blob:` |
-| `connect-src`, `form-action`, `frame-src`, `object-src`, `worker-src`, `base-uri` | `'none'` |
+| `connect-src` | `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net` (Maps API internals only) |
+| `worker-src` | `blob:` |
+| `form-action`, `frame-src`, `object-src`, `base-uri` | `'none'` |
 
 ## Serving
 

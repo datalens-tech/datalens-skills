@@ -31,11 +31,14 @@ from urllib.parse import urlsplit
 
 # --- CSP allowlist (from the injected policy in the ADR) ---------------------------------
 
-SCRIPT_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com", "cdn.tailwindcss.com", "yastatic.net"}
-STYLE_HOSTS = SCRIPT_HOSTS | {"fonts.googleapis.com"}
+# Entries starting with "*." match any subdomain, mirroring CSP host wildcards.
+CDN_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com", "cdn.tailwindcss.com", "yastatic.net"}
+YANDEX_MAPS_HOSTS = {"api-maps.yandex.ru", "*.api-maps.yandex.ru", "*.maps.yandex.net"}
+SCRIPT_HOSTS = CDN_HOSTS | YANDEX_MAPS_HOSTS
+STYLE_HOSTS = CDN_HOSTS | {"fonts.googleapis.com"}
 FONT_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com", "fonts.gstatic.com"}
 LINK_HOSTS = STYLE_HOSTS | FONT_HOSTS  # stylesheets, preconnect, preload, icons
-IMG_HOSTS = {"yastatic.net"}           # plus data: / blob:
+IMG_HOSTS = {"yastatic.net"} | YANDEX_MAPS_HOSTS  # plus data: / blob:
 IMG_SCHEMES = {"data", "blob"}
 MEDIA_SCHEMES = {"data", "blob"}       # media-src data: blob:
 
@@ -68,15 +71,15 @@ API_PATTERNS = [
     (re.compile(r"\bcaches\s*\."),
      "blocked-storage", "Cache API is blocked in this sandbox"),
     (re.compile(r"\bfetch\s*\("),
-     "blocked-network", "fetch() is blocked (connect-src 'none'); inline the data instead"),
+     "blocked-network", "fetch() is blocked (connect-src allows only Yandex Maps hosts); inline the data instead"),
     (re.compile(r"\bXMLHttpRequest\b"),
-     "blocked-network", "XMLHttpRequest is blocked (connect-src 'none')"),
+     "blocked-network", "XMLHttpRequest is blocked (connect-src allows only Yandex Maps hosts)"),
     (re.compile(r"\b(WebSocket|EventSource)\b"),
-     "blocked-network", "live connections are blocked (connect-src 'none')"),
+     "blocked-network", "live connections are blocked (connect-src allows only Yandex Maps hosts)"),
     (re.compile(r"sendBeacon"),
-     "blocked-network", "navigator.sendBeacon is blocked (connect-src 'none')"),
+     "blocked-network", "navigator.sendBeacon is blocked (connect-src allows only Yandex Maps hosts)"),
     (re.compile(r"\bnew\s+(?:Shared)?Worker\s*\("),
-     "blocked-worker", "workers are blocked (worker-src 'none')"),
+     "blocked-worker", "workers are blocked unless created from a blob: URL (worker-src blob:)"),
     (re.compile(r"serviceWorker"),
      "blocked-worker", "service workers are blocked in this sandbox"),
     (re.compile(r"\b(?:alert|confirm|prompt)\s*\("),
@@ -105,6 +108,17 @@ class Finding:
     def format(self, source):
         loc = f"{source}:{self.line}" if self.line else source
         return f"{loc}: {self.severity}: {self.code}: {self.message}"
+
+
+def host_allowed(host, allowed_hosts):
+    """Exact match, or a "*.example.com" entry matching any subdomain (CSP wildcard rules)."""
+    for allowed in allowed_hosts:
+        if allowed.startswith("*."):
+            if host.endswith(allowed[1:]):
+                return True
+        elif host == allowed:
+            return True
+    return False
 
 
 def url_scheme_host(value):
@@ -203,7 +217,7 @@ class PageLinter(HTMLParser):
             if not r or low.startswith(("#", "data:", "blob:")):
                 continue  # same-doc fragment or inline data — not a host fetch
             _, host = url_scheme_host(r)
-            if host and host not in self.CSS_URL_HOSTS:
+            if host and not host_allowed(host, self.CSS_URL_HOSTS):
                 hint = REWRITE_HINTS.get(host)
                 self._add("warning", "csp-css",
                           f"CSS loads from {host}, which the CSP blocks"
@@ -223,7 +237,7 @@ class PageLinter(HTMLParser):
                       f"<{kind}> uses a non-allowlisted resource ({value!r}); "
                       f"the CSP only permits specific CDNs")
             return
-        if host in allowed_hosts:
+        if host_allowed(host, allowed_hosts):
             return
         if host in REWRITE_HINTS:
             self._add("warning", "csp-rewrite",

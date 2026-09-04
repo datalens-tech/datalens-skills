@@ -71,13 +71,13 @@ API_PATTERNS = [
     (re.compile(r"\bcaches\s*\."),
      "blocked-storage", "Cache API is blocked in this sandbox"),
     (re.compile(r"\bfetch\s*\("),
-     "blocked-network", "fetch() is blocked (connect-src allows only Yandex Maps hosts); inline the data instead"),
+     "blocked-network", "fetch() can only reach the Yandex Maps hosts; inline the data instead"),
     (re.compile(r"\bXMLHttpRequest\b"),
-     "blocked-network", "XMLHttpRequest is blocked (connect-src allows only Yandex Maps hosts)"),
+     "blocked-network", "XMLHttpRequest can only reach the Yandex Maps hosts; inline the data instead"),
     (re.compile(r"\b(WebSocket|EventSource)\b"),
-     "blocked-network", "live connections are blocked (connect-src allows only Yandex Maps hosts)"),
+     "blocked-network", "live connections can only reach the Yandex Maps hosts"),
     (re.compile(r"sendBeacon"),
-     "blocked-network", "navigator.sendBeacon is blocked (connect-src allows only Yandex Maps hosts)"),
+     "blocked-network", "navigator.sendBeacon can only reach the Yandex Maps hosts"),
     (re.compile(r"\bnew\s+(?:Shared)?Worker\s*\("),
      "blocked-worker", "workers are blocked (worker-src 'none')"),
     (re.compile(r"serviceWorker"),
@@ -176,8 +176,11 @@ class PageLinter(HTMLParser):
 
         if tag == "script" and attr.get("src"):
             self._check_host("script", attr["src"], SCRIPT_HOSTS)
+            self._check_maps_script(attr["src"])
         elif tag == "link" and attr.get("href"):
-            self._check_host("link", attr["href"], LINK_HOSTS)
+            rel = (attr.get("rel") or "").lower().split()
+            if not ({"preconnect", "dns-prefetch"} & set(rel)):  # hints; CSP does not govern them
+                self._check_host("link", attr["href"], LINK_HOSTS)
         elif tag == "img" and attr.get("src"):
             self._check_host("img", attr["src"], IMG_HOSTS, schemes=IMG_SCHEMES)
         elif tag in ("audio", "video", "source") and attr.get("src"):
@@ -222,6 +225,18 @@ class PageLinter(HTMLParser):
                 self._add("warning", "csp-css",
                           f"CSS loads from {host}, which the CSP blocks"
                           + (f" — {hint}" if hint else ""))
+
+    def _check_maps_script(self, src):
+        scheme, host = url_scheme_host(src)
+        path = urlsplit(src.strip()).path.lower()
+        if host and host_allowed(host, YANDEX_MAPS_HOSTS):
+            if path.startswith("/v3"):
+                self._add("warning", "maps-version",
+                          "Yandex Maps JS API v3 does not work in DataLens pages (it needs an "
+                          "API key to load and workers to render); use /2.1/")
+        elif host in CDN_HOSTS and ("ymaps" in path or "yandex-maps" in path):
+            self._add("warning", "maps-mirror",
+                      "load Yandex Maps only from api-maps.yandex.ru, not through a CDN mirror")
 
     def _check_host(self, kind, value, allowed_hosts, schemes=frozenset()):
         scheme, host = url_scheme_host(value)
@@ -370,6 +385,12 @@ _BAD_CASES = [
     (b'<!DOCTYPE html><meta charset=utf-8><a href="#top">top</a>', None, "clean"),  # in-page anchor is fine
     (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")</script>', None, "clean"),  # OPEN_URL handler present
     (b'<!DOCTYPE html><body>no encoding declared</body>', "charset", "warning"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU"></script>', None, "clean"),  # Yandex Maps 2.1 is allowed
+    (b'<!DOCTYPE html><meta charset=utf-8><img src="https://core-renderer-tiles.maps.yandex.net/tiles?l=map">', None, "clean"),  # wildcard maps host
+    (b'<!DOCTYPE html><meta charset=utf-8><link rel="preconnect" href="https://api-maps.yandex.ru">', None, "clean"),  # preconnect is a hint, not a CSP load
+    (b'<!DOCTYPE html><meta charset=utf-8><img src="https://evil-maps.yandex.net/x.png">', "csp-host", "warning"),  # wildcard needs a real subdomain
+    (b'<!DOCTYPE html><meta charset=utf-8><script src="https://api-maps.yandex.ru/v3/?apikey=k"></script>', "maps-version", "warning"),  # v3 is unsupported
+    (b'<!DOCTYPE html><meta charset=utf-8><script src="https://cdn.jsdelivr.net/npm/ymaps@2.1/x.js"></script>', "maps-mirror", "warning"),  # maps must not be mirrored
 ]
 
 

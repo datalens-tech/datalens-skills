@@ -8,8 +8,9 @@ description: >-
   in DataLens misbehaves: images, fonts, scripts, or CDN libraries blocked or throwing
   Content-Security-Policy errors; fetch/XHR/localStorage failing; charts blank; a download or
   Export button doing nothing; an upload rejected as too large or the wrong encoding; or the
-  page needing to match the user's DataLens theme (light/dark) and language (ru/en). Also
-  covers which CDNs and hosts are allowed and making the page fully self-contained. Not for
+  page needing to match the user's DataLens theme (light/dark) and language (ru/en); or
+  embedding a Yandex map. Also covers which CDNs and hosts are allowed and making the page
+  fully self-contained. Not for
   DataLens chart cells or HTML-markup table columns.
 license: Apache-2.0
 metadata:

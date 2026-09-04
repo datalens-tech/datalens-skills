@@ -67,7 +67,7 @@ Notes / rationale:
 | `script-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, inline |
 | `style-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, `fonts.googleapis.com`, inline |
 | `font-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `fonts.gstatic.com`, `data:` |
-| `img-src` | `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `yandex.ru/clck/`, `data:`, `blob:` |
+| `img-src` | `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `data:`, `blob:` (the policy also lists `yandex.ru/clck/` for the Maps API's own beacon — the linter does not allow it, never reference it) |
 | `media-src` | `data:`, `blob:` |
 | `connect-src` | `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net` (Maps API internals only) |
 | `form-action`, `frame-src`, `object-src`, `worker-src`, `base-uri` | `'none'` |

@@ -33,7 +33,12 @@ from urllib.parse import urlsplit
 
 # Entries starting with "*." match any subdomain, mirroring CSP host wildcards.
 CDN_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com", "cdn.tailwindcss.com", "yastatic.net"}
-YANDEX_MAPS_HOSTS = {"api-maps.yandex.ru", "*.api-maps.yandex.ru", "*.maps.yandex.net"}
+YANDEX_MAPS_HOSTS = {
+    "api-maps.yandex.ru",
+    "*.api-maps.yandex.ru",
+    "*.maps.yandex.net",
+    "suggest-maps.yandex.ru",
+}
 SCRIPT_HOSTS = CDN_HOSTS | YANDEX_MAPS_HOSTS
 STYLE_HOSTS = CDN_HOSTS | {"fonts.googleapis.com"}
 FONT_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com", "fonts.gstatic.com"}

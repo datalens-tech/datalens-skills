@@ -8,13 +8,13 @@ state-in-memory.**
 
 | Resource | Allowed sources |
 |----------|-----------------|
-| `<script src>` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net` |
+| `<script src>` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `suggest-maps.yandex.ru` |
 | inline `<script>` | ✅ allowed (`'unsafe-inline'` / `'unsafe-eval'`) |
-| `<link rel=stylesheet>` / `<style>` | the CDN hosts above (not the maps hosts) **+** `fonts.googleapis.com`; inline ✅ |
+| `<link rel=stylesheet>` / `<style>` | the CDN hosts above (not the maps hosts) **+** `fonts.googleapis.com`, `blob:`; inline ✅ |
 | fonts (`@font-face`, font files) | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `fonts.gstatic.com`, `data:` |
 | `<img>` | `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `data:`, `blob:` |
 | `<audio>` / `<video>` / `<source>` | `data:`, `blob:` only |
-| `fetch` / XHR | `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net` only — used by the Maps API internally |
+| `fetch` / XHR | `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `suggest-maps.yandex.ru` only — used by the Maps API internally |
 
 Yandex Maps JS API 2.1 from `api-maps.yandex.ru` is the one external service the page may talk
 to. Do not route it through a CDN mirror, and do not use v3 (it needs an API key to load and

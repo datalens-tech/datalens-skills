@@ -53,8 +53,8 @@ network, storage, or the parent page.
 
 | Resource | Allowed from |
 |----------|--------------|
-| Scripts | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, Yandex Maps (`api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`) (+ inline) |
-| Styles | the CDNs above **+** `fonts.googleapis.com` (+ inline) |
+| Scripts | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, Yandex Maps (`api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `suggest-maps.yandex.ru`) (+ inline) |
+| Styles | the CDNs above **+** `fonts.googleapis.com`, `blob:` (+ inline) |
 | Fonts | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `fonts.gstatic.com`, `data:` |
 | Images | `yastatic.net`, the Yandex Maps hosts, `data:`, `blob:` |
 | Media | `data:`, `blob:` only |

@@ -89,6 +89,15 @@ API_PATTERNS = [
      "blocked-capability", "camera / geolocation / fullscreen are blocked in this sandbox"),
 ]
 
+# An OPEN_URL click interceptor only has a host to talk to while the page is framed. Opened
+# top-level (a presigned URL within its TTL) or previewed outside DataLens, `parent === window`:
+# nothing answers the message, so an ungated preventDefault() makes every link a no-op. These
+# match the usual ways of asking "am I in a frame?" — window.parent !== window, self !== top,
+# window.frameElement — in either operand order.
+_FRAME_SIDE = r"(?:window\s*\.\s*)?(?:parent|top|self|window)"
+FRAME_GUARD_RE = re.compile(rf"{_FRAME_SIDE}\s*[!=]==?\s*{_FRAME_SIDE}|\bframeElement\b")
+PREVENT_DEFAULT_RE = re.compile(r"preventDefault\s*\(")
+
 # Size limits (bytes) from the ADR: 5–10 MB enforced at upload.
 SOFT_SIZE = 5 * 1024 * 1024
 HARD_SIZE = 10 * 1024 * 1024
@@ -296,6 +305,18 @@ def lint_bytes(raw):
                                 "they should navigate, intercept clicks and post "
                                 "{code:'OPEN_URL', data:{url}} to the parent (advisory; the linter "
                                 "cannot verify the handler)"))
+
+    # The mirror image, also an ADVISORY 'note': the page does intercept clicks for OPEN_URL, but
+    # nothing checks that it is framed, so the links die wherever there is no host to answer.
+    if ("OPEN_URL" in text
+            and PREVENT_DEFAULT_RE.search(text)
+            and not FRAME_GUARD_RE.search(text)):
+        findings.append(Finding("note", "unguarded-open-url", 0,
+                                "OPEN_URL click interception is not gated on being framed — outside "
+                                "the DataLens frame (page opened top-level, local preview) "
+                                "parent === window, nothing answers the message and preventDefault() "
+                                "leaves every link dead; wrap the listener in "
+                                "`if (window.parent !== window) { … }` (advisory)"))
     return findings
 
 
@@ -355,6 +376,9 @@ _BAD_CASES = [
     (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x.test/y">go</a>', "link-navigation", "note"),  # advisory note: link with no OPEN_URL handler
     (b'<!DOCTYPE html><meta charset=utf-8><a href="#top">top</a>', None, "clean"),  # in-page anchor is fine
     (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")</script>', None, "clean"),  # OPEN_URL handler present
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})</script>', "unguarded-open-url", "note"),  # advisory note: interception with no frame check
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>if(window.parent!==window){document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})}</script>', None, "clean"),  # gated on being framed
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>if(self!==top){document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})}</script>', None, "clean"),  # the self !== top spelling counts too
     (b'<!DOCTYPE html><body>no encoding declared</body>', "charset", "warning"),
 ]
 
@@ -374,7 +398,8 @@ def self_test():
         codes = {f.code for f in findings}
         if kind == "clean":
             # Should not raise any CSP host/scheme/css warning.
-            bad = codes & {"csp-host", "csp-scheme", "csp-css", "csp-rewrite", "link-navigation"}
+            bad = codes & {"csp-host", "csp-scheme", "csp-css", "csp-rewrite", "link-navigation",
+                           "unguarded-open-url"}
             if bad:
                 failures += 1
                 print(f"FAIL (expected no CSP warning) for {raw[:48]!r}: {sorted(bad)}")

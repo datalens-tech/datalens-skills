@@ -66,16 +66,25 @@ exportFile('report.csv', 'text/csv', csvString);
 ```
 
 **Open a link** (ordinary navigation is blocked — an `<a href>` does nothing, and `target="_blank"`
-only reaches `about:blank`). Attach one delegated listener that turns link clicks into `OPEN_URL`:
+only reaches `about:blank`). Attach one delegated listener that turns link clicks into `OPEN_URL`,
+gated on being framed:
 
 ```js
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('a[href]');
-  if (!a || a.getAttribute('href').startsWith('#')) return; // leave in-page anchors alone
-  e.preventDefault();
-  parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
-});
+if (window.parent !== window) {
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a || a.getAttribute('href').startsWith('#')) return; // leave in-page anchors alone
+    e.preventDefault();
+    parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
+  });
+}
 ```
+
+The gate matters because the same document can be read outside the DataLens frame: a presigned URL
+opened top-level within its TTL ([csp-and-sandbox.md](csp-and-sandbox.md)), or a local preview
+while the page is being built. There `parent === window`, so nothing answers `OPEN_URL` and an
+ungated `preventDefault()` turns every link into a no-op; gated, the browser navigates normally
+(the injected CSP constrains subresources, not document navigation).
 
 ## Encoding & size (upload-time)
 

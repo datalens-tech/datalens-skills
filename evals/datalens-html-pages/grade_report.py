@@ -70,6 +70,10 @@ def grade(path: Path) -> dict[str, tuple[bool, str]]:
         _has(r"parent\s*\.\s*postMessage", text) and "blocked-download" not in codes,
         "export uses parent.postMessage and there is no <a download>",
     )
+    checks["links-work-unframed"] = (
+        "unguarded-open-url" not in codes,
+        "OPEN_URL interception is gated on being framed, so links still work unframed",
+    )
     checks["theme-from-query"] = (
         _has(r"get\(\s*['\"]theme['\"]", text),
         "reads a ?theme query parameter",

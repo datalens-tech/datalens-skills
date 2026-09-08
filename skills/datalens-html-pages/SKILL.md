@@ -93,17 +93,23 @@ parent.postMessage({ code: 'EXPORT', data: { name: 'report.csv', mime: 'text/csv
 
 **Opening links** — an ordinary `<a href>` does **not** navigate inside the sandbox (opaque
 origin; even `target="_blank"` only reaches `about:blank`). To open a URL, ask the host: intercept
-the click, `preventDefault()`, and post `OPEN_URL`. One delegated listener covers every link:
+the click, `preventDefault()`, and post `OPEN_URL`. One delegated listener covers every link —
+**gate it on being framed**, so the same file still works when it is not in the DataLens frame
+(opened top-level within the presigned TTL, or previewed locally while you build it): there
+`parent === window`, nobody answers the message, and an ungated `preventDefault()` would leave
+every link dead.
 
 ```js
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('a[href]');
-  if (!a) return;
-  const href = a.getAttribute('href');
-  if (!href || href.startsWith('#')) return;   // in-page anchors scroll normally — leave them
-  e.preventDefault();
-  parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
-});
+if (window.parent !== window) {                // outside the frame the browser navigates itself
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('#')) return; // in-page anchors scroll normally — leave them
+    e.preventDefault();
+    parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
+  });
+}
 ```
 
 **Encoding & size** (enforced at upload):

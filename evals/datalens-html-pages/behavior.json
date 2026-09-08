@@ -70,6 +70,7 @@
       "assertions": [
         { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict (the link-navigation nudge is an advisory note and does not block)." },
         { "id": "self-contained", "auto": true, "text": "One self-contained HTML document." },
+        { "id": "links-work-unframed", "auto": true, "text": "The OPEN_URL interception is gated on being framed (window.parent !== window / self !== top), so opened top-level or previewed outside DataLens the link still navigates instead of being killed by preventDefault()." },
         { "id": "opens-via-open-url", "auto": false, "text": "Clicking the link posts {code:'OPEN_URL', data:{url}} to the parent; it does not rely on <a href> / target=_blank navigation." }
       ]
     }

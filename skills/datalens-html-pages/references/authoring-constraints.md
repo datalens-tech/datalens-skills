@@ -8,12 +8,17 @@ state-in-memory.**
 
 | Resource | Allowed sources |
 |----------|-----------------|
-| `<script src>` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net` |
+| `<script src>` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `suggest-maps.yandex.ru` |
 | inline `<script>` | ✅ allowed (`'unsafe-inline'` / `'unsafe-eval'`) |
-| `<link rel=stylesheet>` / `<style>` | script hosts above **+** `fonts.googleapis.com`; inline ✅ |
+| `<link rel=stylesheet>` / `<style>` | the CDN hosts above (not the maps hosts) **+** `fonts.googleapis.com`, `blob:`; inline ✅ |
 | fonts (`@font-face`, font files) | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `fonts.gstatic.com`, `data:` |
-| `<img>` | `yastatic.net`, `data:`, `blob:` |
+| `<img>` | `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `data:`, `blob:` |
 | `<audio>` / `<video>` / `<source>` | `data:`, `blob:` only |
+| `fetch` / XHR | `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `suggest-maps.yandex.ru` only — used by the Maps API internally |
+
+Yandex Maps JS API 2.1 from `api-maps.yandex.ru` is the one external service the page may talk
+to. Do not route it through a CDN mirror, and do not use v3 (it needs an API key to load and
+workers to render).
 
 Rewrite off-allowlist libraries through an allowed mirror:
 
@@ -29,7 +34,7 @@ Rewrite off-allowlist libraries through an allowed mirror:
 | Category | Blocked | Do instead |
 |----------|---------|------------|
 | Storage | `localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, Cache API | in-memory JS variables |
-| Network | `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `navigator.sendBeacon` | **inline the data** into the page |
+| Network | `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `navigator.sendBeacon` to any host but Yandex Maps | **inline the data** into the page |
 | Workers | `new Worker`, `SharedWorker`, `navigator.serviceWorker` | do work on the main thread |
 | Popups/dialogs | `window.open`, `alert`, `confirm`, `prompt` | render UI in the page |
 | Navigation / links | navigating the parent (`parent.location`, `top.location`); ordinary `<a href>` link navigation | post `{code:'OPEN_URL', data:{url}}` on click (below) |

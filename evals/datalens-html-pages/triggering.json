@@ -4,7 +4,7 @@
     "should_trigger": true
   },
   {
-    "query": "my datalens html report renders but the charts are empty. console says 'Refused to connect to /api/metrics because it violates the Content-Security-Policy directive connect-src none'. my script does fetch('/api/metrics') on load. how do i get the data into the page?",
+    "query": "my datalens html report renders but the charts are empty. console says 'Refused to connect to /api/metrics because it violates the Content-Security-Policy directive connect-src'. my script does fetch('/api/metrics') on load. how do i get the data into the page?",
     "should_trigger": true
   },
   {
@@ -37,6 +37,10 @@
   },
   {
     "query": "images are broken in my datalens html report — some come from our own cdn (assets.acme.io) and one is an http:// url. everything else on the page works. why won't the images show and which hosts am i allowed to use?",
+    "should_trigger": true
+  },
+  {
+    "query": "can i put a yandex map with our store locations into an html page for datalens? which maps api version loads under its CSP and how do i embed it?",
     "should_trigger": true
   },
   {

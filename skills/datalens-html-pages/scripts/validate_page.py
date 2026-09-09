@@ -89,6 +89,15 @@ API_PATTERNS = [
      "blocked-capability", "camera / geolocation / fullscreen are blocked in this sandbox"),
 ]
 
+# Comparisons between the current window and parent/top, in either operand order (heuristic).
+_CURRENT_WINDOW = r"(?:window\s*\.\s*)?(?:self|window)"
+_ANCESTOR_WINDOW = r"(?:window\s*\.\s*)?(?:parent|top)"
+FRAME_GUARD_RE = re.compile(
+    rf"\b(?:{_CURRENT_WINDOW}\s*[!=]==?\s*{_ANCESTOR_WINDOW}"
+    rf"|{_ANCESTOR_WINDOW}\s*[!=]==?\s*{_CURRENT_WINDOW})\b"
+)
+PREVENT_DEFAULT_RE = re.compile(r"preventDefault\s*\(")
+
 # Size limits (bytes) from the ADR: 5–10 MB enforced at upload.
 SOFT_SIZE = 5 * 1024 * 1024
 HARD_SIZE = 10 * 1024 * 1024
@@ -97,7 +106,7 @@ CHARSET_WINDOW = 1024  # charset must appear within the first 1024 bytes
 
 class Finding:
     def __init__(self, severity, code, line, message):
-        self.severity = severity  # 'error' | 'warning'
+        self.severity = severity  # 'error' | 'warning' | 'note'
         self.code = code
         self.line = line
         self.message = message
@@ -296,6 +305,13 @@ def lint_bytes(raw):
                                 "they should navigate, intercept clicks and post "
                                 "{code:'OPEN_URL', data:{url}} to the parent (advisory; the linter "
                                 "cannot verify the handler)"))
+
+    if ("OPEN_URL" in text
+            and PREVENT_DEFAULT_RE.search(text)
+            and not FRAME_GUARD_RE.search(text)):
+        findings.append(Finding("note", "unguarded-open-url", 0,
+                                "OPEN_URL interception has no recognizable frame check; "
+                                "wrap it in `if (window.parent !== window)`"))
     return findings
 
 
@@ -355,6 +371,21 @@ _BAD_CASES = [
     (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x.test/y">go</a>', "link-navigation", "note"),  # advisory note: link with no OPEN_URL handler
     (b'<!DOCTYPE html><meta charset=utf-8><a href="#top">top</a>', None, "clean"),  # in-page anchor is fine
     (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")</script>', None, "clean"),  # OPEN_URL handler present
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})</script>', "unguarded-open-url", "note"),  # advisory note: interception with no frame check
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>if(window.parent!==window){document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})}</script>', None, "clean"),  # gated on being framed
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>if(self!==top){document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})}</script>', None, "clean"),  # the self !== top spelling counts too
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window!==parent){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', None, "clean"),  # reversed operands
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window!==self){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),  # both identify the current window
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(parent!==top){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),  # neither identifies the current window
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window.frameElement){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),  # null in the opaque-origin sandbox
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window===window){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(self==self){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(stop===top){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(grandparent==window){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window!==parentNode){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(top!==selfish){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>function install(){if(window.parent===window)return;e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', None, "clean"),  # equality as an early return
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window.top != window.self){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', None, "clean"),
     (b'<!DOCTYPE html><body>no encoding declared</body>', "charset", "warning"),
 ]
 
@@ -374,13 +405,15 @@ def self_test():
         codes = {f.code for f in findings}
         if kind == "clean":
             # Should not raise any CSP host/scheme/css warning.
-            bad = codes & {"csp-host", "csp-scheme", "csp-css", "csp-rewrite", "link-navigation"}
+            bad = codes & {"csp-host", "csp-scheme", "csp-css", "csp-rewrite", "link-navigation",
+                           "unguarded-open-url"}
             if bad:
                 failures += 1
                 print(f"FAIL (expected no CSP warning) for {raw[:48]!r}: {sorted(bad)}")
-        elif want_code not in codes:
+        elif not any(f.code == want_code and f.severity == kind for f in findings):
             failures += 1
-            print(f"FAIL (expected {want_code}) for {raw[:48]!r}: got {sorted(codes)}")
+            print(f"FAIL (expected {kind}: {want_code}) for {raw[:48]!r}: "
+                  f"got {[(f.severity, f.code) for f in findings]}")
 
     total = 1 + len(_BAD_CASES)
     if failures:

@@ -66,16 +66,23 @@ exportFile('report.csv', 'text/csv', csvString);
 ```
 
 **Open a link** (ordinary navigation is blocked — an `<a href>` does nothing, and `target="_blank"`
-only reaches `about:blank`). Attach one delegated listener that turns link clicks into `OPEN_URL`:
+only reaches `about:blank`). Attach one delegated listener that turns link clicks into `OPEN_URL`,
+gated on being framed:
 
 ```js
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('a[href]');
-  if (!a || a.getAttribute('href').startsWith('#')) return; // leave in-page anchors alone
-  e.preventDefault();
-  parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
-});
+if (window.parent !== window) {
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a || a.getAttribute('href').startsWith('#')) return; // leave in-page anchors alone
+    e.preventDefault();
+    parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
+  });
+}
 ```
+
+A presigned URL opened top-level within its TTL, or a local preview, has `parent === window`:
+nothing answers `OPEN_URL`, so ungated `preventDefault()` cancels navigation.
+Gating the listener leaves those links to the browser.
 
 ## Encoding & size (upload-time)
 
@@ -93,8 +100,12 @@ document.addEventListener('click', (e) => {
 - external `src`/`href` host outside the CSP allowlist (with jsdelivr/cdnjs rewrite hints)
 - storage / network / worker / popup / dialog / capability API usage
 - blocked tags and `<a download>`
-- (advisory note) `<a href>` links with no `OPEN_URL` handler detected — they won't navigate
+- `link-navigation` (advisory note): `<a href>` links with no `OPEN_URL` handler detected
+- `unguarded-open-url` (advisory note): `OPEN_URL` interception with no recognizable frame check
 - CSS `url()` / `@import` and `srcset` hosts off the allowlist
 - missing early `<meta charset>`; high `U+FFFD` density
 - wrapping markdown code fences
 - size over the soft (5 MB) / hard (10 MB) limits
+
+The link notes use page-wide text heuristics; a frame comparison elsewhere can suppress a note
+without guarding the listener. Verify link behavior in a browser, both framed and top-level.

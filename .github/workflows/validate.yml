@@ -42,4 +42,6 @@ jobs:
             | xargs -0 -r -n1 python skills/datalens-html-pages/scripts/validate_page.py --strict
 
       - name: Check the template still demonstrates every behavior (deterministic eval)
-        run: python evals/datalens-html-pages/grade_report.py --self-test
+        run: |
+          python evals/datalens-html-pages/grade_report.py --self-test
+          python -m unittest discover -s evals/datalens-html-pages -p 'test_*.py'

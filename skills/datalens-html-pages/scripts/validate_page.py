@@ -89,13 +89,13 @@ API_PATTERNS = [
      "blocked-capability", "camera / geolocation / fullscreen are blocked in this sandbox"),
 ]
 
-# An OPEN_URL click interceptor only has a host to talk to while the page is framed. Opened
-# top-level (a presigned URL within its TTL) or previewed outside DataLens, `parent === window`:
-# nothing answers the message, so an ungated preventDefault() makes every link a no-op. These
-# match the usual ways of asking "am I in a frame?" — window.parent !== window, self !== top,
-# window.frameElement — in either operand order.
-_FRAME_SIDE = r"(?:window\s*\.\s*)?(?:parent|top|self|window)"
-FRAME_GUARD_RE = re.compile(rf"{_FRAME_SIDE}\s*[!=]==?\s*{_FRAME_SIDE}|\bframeElement\b")
+# Comparisons between the current window and parent/top, in either operand order (heuristic).
+_CURRENT_WINDOW = r"(?:window\s*\.\s*)?(?:self|window)"
+_ANCESTOR_WINDOW = r"(?:window\s*\.\s*)?(?:parent|top)"
+FRAME_GUARD_RE = re.compile(
+    rf"\b(?:{_CURRENT_WINDOW}\s*[!=]==?\s*{_ANCESTOR_WINDOW}"
+    rf"|{_ANCESTOR_WINDOW}\s*[!=]==?\s*{_CURRENT_WINDOW})\b"
+)
 PREVENT_DEFAULT_RE = re.compile(r"preventDefault\s*\(")
 
 # Size limits (bytes) from the ADR: 5–10 MB enforced at upload.
@@ -106,7 +106,7 @@ CHARSET_WINDOW = 1024  # charset must appear within the first 1024 bytes
 
 class Finding:
     def __init__(self, severity, code, line, message):
-        self.severity = severity  # 'error' | 'warning'
+        self.severity = severity  # 'error' | 'warning' | 'note'
         self.code = code
         self.line = line
         self.message = message
@@ -306,17 +306,12 @@ def lint_bytes(raw):
                                 "{code:'OPEN_URL', data:{url}} to the parent (advisory; the linter "
                                 "cannot verify the handler)"))
 
-    # The mirror image, also an ADVISORY 'note': the page does intercept clicks for OPEN_URL, but
-    # nothing checks that it is framed, so the links die wherever there is no host to answer.
     if ("OPEN_URL" in text
             and PREVENT_DEFAULT_RE.search(text)
             and not FRAME_GUARD_RE.search(text)):
         findings.append(Finding("note", "unguarded-open-url", 0,
-                                "OPEN_URL click interception is not gated on being framed — outside "
-                                "the DataLens frame (page opened top-level, local preview) "
-                                "parent === window, nothing answers the message and preventDefault() "
-                                "leaves every link dead; wrap the listener in "
-                                "`if (window.parent !== window) { … }` (advisory)"))
+                                "OPEN_URL interception has no recognizable frame check; "
+                                "wrap it in `if (window.parent !== window)`"))
     return findings
 
 
@@ -379,6 +374,18 @@ _BAD_CASES = [
     (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})</script>', "unguarded-open-url", "note"),  # advisory note: interception with no frame check
     (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>if(window.parent!==window){document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})}</script>', None, "clean"),  # gated on being framed
     (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>if(self!==top){document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})}</script>', None, "clean"),  # the self !== top spelling counts too
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window!==parent){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', None, "clean"),  # reversed operands
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window!==self){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),  # both identify the current window
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(parent!==top){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),  # neither identifies the current window
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window.frameElement){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),  # null in the opaque-origin sandbox
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window===window){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(self==self){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(stop===top){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(grandparent==window){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window!==parentNode){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(top!==selfish){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>function install(){if(window.parent===window)return;e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', None, "clean"),  # equality as an early return
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window.top != window.self){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', None, "clean"),
     (b'<!DOCTYPE html><body>no encoding declared</body>', "charset", "warning"),
 ]
 
@@ -403,9 +410,10 @@ def self_test():
             if bad:
                 failures += 1
                 print(f"FAIL (expected no CSP warning) for {raw[:48]!r}: {sorted(bad)}")
-        elif want_code not in codes:
+        elif not any(f.code == want_code and f.severity == kind for f in findings):
             failures += 1
-            print(f"FAIL (expected {want_code}) for {raw[:48]!r}: got {sorted(codes)}")
+            print(f"FAIL (expected {kind}: {want_code}) for {raw[:48]!r}: "
+                  f"got {[(f.severity, f.code) for f in findings]}")
 
     total = 1 + len(_BAD_CASES)
     if failures:

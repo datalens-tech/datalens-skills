@@ -68,9 +68,9 @@
       "expected_output": "A self-contained page whose link click is intercepted (preventDefault) and forwarded to the host via parent.postMessage({code:'OPEN_URL', data:{url}}) — an <a href> alone does not navigate in the sandbox.",
       "files": [],
       "assertions": [
-        { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict (the link-navigation nudge is an advisory note and does not block)." },
+        { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict (link-navigation and unguarded-open-url are advisory notes and do not block)." },
         { "id": "self-contained", "auto": true, "text": "One self-contained HTML document." },
-        { "id": "links-work-unframed", "auto": true, "text": "The OPEN_URL interception is gated on being framed (window.parent !== window / self !== top), so opened top-level or previewed outside DataLens the link still navigates instead of being killed by preventDefault()." },
+        { "id": "links-work-unframed", "auto": false, "text": "The OPEN_URL interception is gated on being framed." },
         { "id": "opens-via-open-url", "auto": false, "text": "Clicking the link posts {code:'OPEN_URL', data:{url}} to the parent; it does not rely on <a href> / target=_blank navigation." }
       ]
     }

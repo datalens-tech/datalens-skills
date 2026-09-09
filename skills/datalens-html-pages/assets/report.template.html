@@ -129,8 +129,6 @@
     });
 
     // Links don't navigate in the sandbox — intercept clicks and ask the host to open the URL.
-    // Only when framed: opened top-level (or previewed outside DataLens) there is no host to
-    // ask, and the preventDefault() below would leave every link dead.
     if (window.parent !== window) {
       document.addEventListener('click', (e) => {
         const a = e.target.closest('a[href]');

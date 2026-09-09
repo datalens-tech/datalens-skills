@@ -80,11 +80,9 @@ if (window.parent !== window) {
 }
 ```
 
-The gate matters because the same document can be read outside the DataLens frame: a presigned URL
-opened top-level within its TTL ([csp-and-sandbox.md](csp-and-sandbox.md)), or a local preview
-while the page is being built. There `parent === window`, so nothing answers `OPEN_URL` and an
-ungated `preventDefault()` turns every link into a no-op; gated, the browser navigates normally
-(the injected CSP constrains subresources, not document navigation).
+A presigned URL opened top-level within its TTL, or a local preview, has `parent === window`:
+nothing answers `OPEN_URL`, so ungated `preventDefault()` cancels navigation.
+Gating the listener leaves those links to the browser.
 
 ## Encoding & size (upload-time)
 
@@ -102,8 +100,12 @@ ungated `preventDefault()` turns every link into a no-op; gated, the browser nav
 - external `src`/`href` host outside the CSP allowlist (with jsdelivr/cdnjs rewrite hints)
 - storage / network / worker / popup / dialog / capability API usage
 - blocked tags and `<a download>`
-- (advisory note) `<a href>` links with no `OPEN_URL` handler detected — they won't navigate
+- `link-navigation` (advisory note): `<a href>` links with no `OPEN_URL` handler detected
+- `unguarded-open-url` (advisory note): `OPEN_URL` interception with no recognizable frame check
 - CSS `url()` / `@import` and `srcset` hosts off the allowlist
 - missing early `<meta charset>`; high `U+FFFD` density
 - wrapping markdown code fences
 - size over the soft (5 MB) / hard (10 MB) limits
+
+The link notes use page-wide text heuristics; a frame comparison elsewhere can suppress a note
+without guarding the listener. Verify link behavior in a browser, both framed and top-level.

@@ -4,12 +4,12 @@
 `behavior.json` in this directory describes what a good generated page should do. The
 assertions marked `"auto": true` there are the ones this script checks — each check id below
 matches an assertion id. The `"auto": false` assertions (does the chart actually render, is the
-RU/EN copy coherent, …) still need human or LLM judgement.
+RU/EN copy coherent, do links work framed and unframed, …) need manual review or browser checks.
 
 The safety rules (CSP allowlist, blocked APIs, size/encoding, <a download>) are NOT re-checked
 here: this imports the skill's own linter, `validate_page.py`, and derives those checks from its
-findings, so the grader can never drift from what DataLens actually enforces. Only the
-behavior-specific bits (reads ?theme/?lang, exports via postMessage, responsive) are grepped.
+findings. Other checks use text heuristics (document structure, query parameters, postMessage,
+viewport); they do not prove runtime behavior. Advisory notes never become automatic assertions.
 
 Note: `grade()` runs every check; a given behavior.json case only asserts a subset, so read the
 failures against that case's `auto` assertions rather than the overall exit code. `--self-test`
@@ -69,10 +69,6 @@ def grade(path: Path) -> dict[str, tuple[bool, str]]:
     checks["export-postmessage"] = (
         _has(r"parent\s*\.\s*postMessage", text) and "blocked-download" not in codes,
         "export uses parent.postMessage and there is no <a download>",
-    )
-    checks["links-work-unframed"] = (
-        "unguarded-open-url" not in codes,
-        "OPEN_URL interception is gated on being framed, so links still work unframed",
     )
     checks["theme-from-query"] = (
         _has(r"get\(\s*['\"]theme['\"]", text),

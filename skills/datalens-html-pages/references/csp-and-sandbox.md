@@ -70,6 +70,7 @@ Notes / rationale:
   revision, and mints a **presigned GET with a 10–30 s expiry** — the permission check and URL
   minting are in one function, so there is no time-of-check/time-of-use gap.
 - Theme and language travel as **signed query params**.
+- A presigned URL opened top-level within its TTL keeps the injected CSP but loses the iframe sandbox.
 - Object metadata on PutObject: `Content-Type: text/html; charset=utf-8`,
   `Content-Disposition: inline`, `Cache-Control: no-store`.
 - Upload is **server-side JSON RPC-like API** (HTML as a plain string, never base64); there are **no
@@ -89,13 +90,11 @@ applies a MIME allowlist and a size cap, sanitizes the filename, and generates t
 parent.postMessage({ code: 'EXPORT', data: { name, mime, data } }, '*');
 ```
 
-**Open a URL** — ordinary links do **not** navigate inside the opaque-origin sandbox (an `<a href>`
-does nothing, and `target="_blank"` only reaches `about:blank`). Intercept the click,
-`preventDefault()`, and ask the host to open it:
+**Open a URL** — ask the host to open a link from the sandbox:
 
 ```js
 parent.postMessage({ code: 'OPEN_URL', data: { url } }, '*');
 ```
 
-So a page that links out should attach one delegated click listener that turns link clicks into
-`OPEN_URL` messages (leaving in-page `#fragment` anchors alone).
+Use the framed-only delegated listener in
+[authoring-constraints.md](authoring-constraints.md), which leaves in-page anchors alone.

@@ -73,6 +73,18 @@
         { "id": "links-work-unframed", "auto": false, "text": "The OPEN_URL interception is gated on being framed." },
         { "id": "opens-via-open-url", "auto": false, "text": "Clicking the link posts {code:'OPEN_URL', data:{url}} to the parent; it does not rely on <a href> / target=_blank navigation." }
       ]
+    },
+    {
+      "id": 6,
+      "name": "report-with-yandex-map",
+      "prompt": "Generate a DataLens HTML report with a short KPI table and a Yandex map showing our five pickup points in Moscow as placemarks.",
+      "expected_output": "A self-contained page that loads Yandex Maps JS API 2.1 from api-maps.yandex.ru (not v3, not a CDN mirror), renders placemarks from inlined coordinates into a fixed-height container, and passes the linter.",
+      "files": [],
+      "assertions": [
+        { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict (which rejects Maps v3 and maps loaded through a CDN mirror)." },
+        { "id": "self-contained", "auto": true, "text": "One self-contained HTML document; the coordinates are inlined." },
+        { "id": "map-renders", "auto": false, "text": "Loads https://api-maps.yandex.ru/2.1/ and creates the map with placemarks inside ymaps.ready; the map container has an explicit height." }
+      ]
     }
   ]
 }

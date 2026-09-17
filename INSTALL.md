@@ -12,6 +12,7 @@ use — Claude Code, Codex, OpenCode, and more — detecting it automatically:
 ```bash
 npx skills add datalens-tech/datalens-skills --skill datalens
 npx skills add datalens-tech/datalens-skills --skill datalens-html-pages
+npx skills add datalens-tech/datalens-skills --skill datalens-onprem-install
 npx skills add datalens-tech/datalens-skills --skill datalens-sdk
 npx skills add datalens-tech/datalens-skills --skill datalens-yc-rls-resolve
 ```
@@ -63,6 +64,7 @@ A skill is just a folder; drop the one(s) you want straight into the directory y
 git clone https://github.com/datalens-tech/datalens-skills
 cp -R datalens-skills/skills/datalens ~/.claude/skills/
 cp -R datalens-skills/skills/datalens-html-pages ~/.claude/skills/
+cp -R datalens-skills/skills/datalens-onprem-install ~/.claude/skills/
 cp -R datalens-skills/skills/datalens-sdk ~/.claude/skills/
 cp -R datalens-skills/skills/datalens-yc-rls-resolve ~/.claude/skills/
 ```

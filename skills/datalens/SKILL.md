@@ -46,10 +46,10 @@ DataLens object URLs can use either of these forms:
 - `/<object_type>/<object_id>` — when the readable suffix is absent, the entire final path segment
   is the object ID.
 
-For example, `https://datalens.yandex-team.ru/connections/137evtcet9vkk-samples` refers to the
-connection ID `137evtcet9vkk`; `samples` is a human-readable URL suffix. If the URL is
-`https://datalens.yandex-team.ru/connections/137evtcet9vkk`, use the same complete segment as the
-ID. The same rule applies to connections, datasets, charts, and dashboards.
+For example, `https://datalens.ru/connections/r6wa2j1ww5cad-demo` refers to the connection ID
+`r6wa2j1ww5cad`; `demo` is a human-readable URL suffix. If the URL is
+`https://datalens.ru/connections/r6wa2j1ww5cad`, use the same complete segment as the ID. The same
+rule applies to connections, datasets, charts, and dashboards.
 
 Treat object IDs as opaque values. Prefer the value from `Copy ID` or the API response's `id`
 field when available. If a URL is ambiguous or does not match these forms, do not guess the ID.

@@ -6,19 +6,19 @@
     {
       "id": 1,
       "name": "connection-url-with-readable-suffix",
-      "prompt": "Use the DataLens connection at https://datalens.yandex-team.ru/connections/137evtcet9vkk-samples through the API. What exact connection ID should be passed?",
-      "expected_output": "Pass only 137evtcet9vkk. Explain that -samples is a readable URL suffix, not part of the object ID.",
+      "prompt": "Use the DataLens connection at https://datalens.ru/connections/r6wa2j1ww5cad-demo through the API. What exact connection ID should be passed?",
+      "expected_output": "Pass only r6wa2j1ww5cad. Explain that -demo is a readable URL suffix, not part of the object ID.",
       "files": [],
       "assertions": [
-        { "id": "object-id-only", "auto": false, "text": "Uses 137evtcet9vkk as the API object ID, never 137evtcet9vkk-samples." },
-        { "id": "suffix-explained", "auto": false, "text": "Identifies samples as a human-readable URL suffix." }
+        { "id": "object-id-only", "auto": false, "text": "Uses r6wa2j1ww5cad as the API object ID, never r6wa2j1ww5cad-demo." },
+        { "id": "suffix-explained", "auto": false, "text": "Identifies demo as a human-readable URL suffix." }
       ]
     },
     {
       "id": 2,
       "name": "connection-url-without-readable-suffix",
-      "prompt": "Use the DataLens connection at https://datalens.yandex-team.ru/connections/137evtcet9vkk through the API. What exact connection ID should be passed?",
-      "expected_output": "Pass 137evtcet9vkk; when the readable suffix is absent, the entire final path segment is the object ID.",
+      "prompt": "Use the DataLens connection at https://datalens.ru/connections/r6wa2j1ww5cad through the API. What exact connection ID should be passed?",
+      "expected_output": "Pass r6wa2j1ww5cad; when the readable suffix is absent, the entire final path segment is the object ID.",
       "files": [],
       "assertions": [
         { "id": "suffix-optional", "auto": false, "text": "Recognizes that a URL may contain only the object ID with no readable suffix." },
@@ -39,8 +39,8 @@
     {
       "id": 4,
       "name": "ambiguous-url-uses-authoritative-id",
-      "prompt": "The URL https://datalens.yandex-team.ru/connections/team-prod-east-1 is ambiguous because the object ID and readable suffix cannot be separated reliably. The API response contains id=137evtcet9vkk, and the UI's Copy ID action shows 137evtcet9vkk. Which value should be passed to the API?",
-      "expected_output": "Pass 137evtcet9vkk from the API response or Copy ID; do not guess from the URL.",
+      "prompt": "The URL https://datalens.ru/connections/team-prod-east-1 is ambiguous because the object ID and readable suffix cannot be separated reliably. The API response contains id=r6wa2j1ww5cad, and the UI's Copy ID action shows r6wa2j1ww5cad. Which value should be passed to the API?",
+      "expected_output": "Pass r6wa2j1ww5cad from the API response or Copy ID; do not guess from the URL.",
       "files": [],
       "assertions": [
         { "id": "authoritative-id", "auto": false, "text": "Uses the explicit API id or Copy ID value." },

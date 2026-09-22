@@ -28,11 +28,11 @@
     {
       "id": 3,
       "name": "multiple-object-url-shapes",
-      "prompt": "Extract the IDs for these DataLens URLs: https://datalens.ru/datasets/scuxhh1jrrlql-new-dataset, https://datalens.ru/wizard/yfn1k6yxud7yr-example-chart, and https://datalens.ru/dashboards/bgquq1234567.",
-      "expected_output": "Extracts scuxhh1jrrlql, yfn1k6yxud7yr, and bgquq1234567 respectively; the first two have readable suffixes and the last one does not.",
+      "prompt": "Extract the IDs for these DataLens URLs: https://datalens.ru/datasets/scuxhh1jrrlql-new-dataset, https://datalens.ru/wizard/yfn1k6yxud7yr-example-chart, and https://datalens.ru/bgquq1234567.",
+      "expected_output": "Extracts scuxhh1jrrlql, yfn1k6yxud7yr, and bgquq1234567 respectively; the first two have explicit object types and the last is a short dashboard URL.",
       "files": [],
       "assertions": [
-        { "id": "all-object-types", "auto": false, "text": "Applies the same distinction to dataset, chart, and dashboard URLs." },
+        { "id": "all-object-types", "auto": false, "text": "Extracts dataset and chart IDs from explicitly typed URLs and recognizes the root-level dashboard ID without an object-type segment." },
         { "id": "no-guessing", "auto": false, "text": "Uses Copy ID or an API id field instead of guessing when the URL shape is ambiguous." }
       ]
     },

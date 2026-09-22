@@ -37,6 +37,24 @@ database → connection → source → dataset → chart → dashboard
 
 Build left to right and reference by id. Deleting upstream breaks everything downstream.
 
+## Object IDs and URLs
+
+DataLens object URLs can use either of these forms:
+
+- `/<object_type>/<object_id>-<readable_slug>` — pass only the object ID before the readable
+  suffix to the API.
+- `/<object_type>/<object_id>` — when the readable suffix is absent, the entire final path segment
+  is the object ID.
+
+For example, `https://datalens.yandex-team.ru/connections/137evtcet9vkk-samples` refers to the
+connection ID `137evtcet9vkk`; `samples` is a human-readable URL suffix. If the URL is
+`https://datalens.yandex-team.ru/connections/137evtcet9vkk`, use the same complete segment as the
+ID. The same rule applies to connections, datasets, charts, and dashboards.
+
+Treat object IDs as opaque values. Prefer the value from `Copy ID` or the API response's `id`
+field when available. If a URL is ambiguous or does not match these forms, do not guess the ID.
+Do not confuse an object ID with a display name, readable URL suffix, or a field UUID.
+
 ## Object model
 
 Where entries are filed — a separate axis from the flow above. Connections, datasets, charts, and

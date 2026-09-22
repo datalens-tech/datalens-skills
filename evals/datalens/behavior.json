@@ -1,0 +1,51 @@
+{
+  "skill_name": "datalens",
+  "kind": "behavior",
+  "note": "Given a DataLens object URL, does the agent extract the API object ID without confusing it with a readable URL suffix?",
+  "evals": [
+    {
+      "id": 1,
+      "name": "connection-url-with-readable-suffix",
+      "prompt": "Use the DataLens connection at https://datalens.yandex-team.ru/connections/137evtcet9vkk-samples through the API. What exact connection ID should be passed?",
+      "expected_output": "Pass only 137evtcet9vkk. Explain that -samples is a readable URL suffix, not part of the object ID.",
+      "files": [],
+      "assertions": [
+        { "id": "object-id-only", "auto": false, "text": "Uses 137evtcet9vkk as the API object ID, never 137evtcet9vkk-samples." },
+        { "id": "suffix-explained", "auto": false, "text": "Identifies samples as a human-readable URL suffix." }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "connection-url-without-readable-suffix",
+      "prompt": "Use the DataLens connection at https://datalens.yandex-team.ru/connections/137evtcet9vkk through the API. What exact connection ID should be passed?",
+      "expected_output": "Pass 137evtcet9vkk; when the readable suffix is absent, the entire final path segment is the object ID.",
+      "files": [],
+      "assertions": [
+        { "id": "suffix-optional", "auto": false, "text": "Recognizes that a URL may contain only the object ID with no readable suffix." },
+        { "id": "full-segment-id", "auto": false, "text": "Uses the complete final path segment as the ID when no suffix is present." }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "multiple-object-url-shapes",
+      "prompt": "Extract the IDs for these DataLens URLs: https://datalens.ru/datasets/scuxhh1jrrlql-new-dataset, https://datalens.ru/wizard/yfn1k6yxud7yr-example-chart, and https://datalens.ru/dashboards/bgquq1234567.",
+      "expected_output": "Extracts scuxhh1jrrlql, yfn1k6yxud7yr, and bgquq1234567 respectively; the first two have readable suffixes and the last one does not.",
+      "files": [],
+      "assertions": [
+        { "id": "all-object-types", "auto": false, "text": "Applies the same distinction to dataset, chart, and dashboard URLs." },
+        { "id": "no-guessing", "auto": false, "text": "Uses Copy ID or an API id field instead of guessing when the URL shape is ambiguous." }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "ambiguous-url-uses-authoritative-id",
+      "prompt": "The URL https://datalens.yandex-team.ru/connections/team-prod-east-1 is ambiguous because the object ID and readable suffix cannot be separated reliably. The API response contains id=137evtcet9vkk, and the UI's Copy ID action shows 137evtcet9vkk. Which value should be passed to the API?",
+      "expected_output": "Pass 137evtcet9vkk from the API response or Copy ID; do not guess from the URL.",
+      "files": [],
+      "assertions": [
+        { "id": "authoritative-id", "auto": false, "text": "Uses the explicit API id or Copy ID value." },
+        { "id": "ambiguous-url-no-guess", "auto": false, "text": "Does not derive an ID by guessing how the hyphenated URL segment should be split." }
+      ]
+    }
+  ]
+}

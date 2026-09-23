@@ -37,6 +37,30 @@ database → connection → source → dataset → chart → dashboard
 
 Build left to right and reference by id. Deleting upstream breaks everything downstream.
 
+## Object IDs and URLs
+
+DataLens URLs for objects with an explicit type can use either of these forms:
+
+- `/<object_type>/<object_id>-<readable_slug>` — pass only the object ID before the readable
+  suffix to the API.
+- `/<object_type>/<object_id>` — when the readable suffix is absent, the entire final path segment
+  is the object ID.
+
+Dashboard links have an additional short form: `https://datalens.ru/<dashboard_id>`. When the URL
+is identified as a dashboard link, the only path segment is the dashboard ID; there is no object
+type segment. For example, `https://datalens.ru/bgquq1234567` refers to dashboard ID
+`bgquq1234567`.
+
+For an explicitly typed object, `https://datalens.ru/connections/r6wa2j1ww5cad-demo` refers to the connection ID
+`r6wa2j1ww5cad`; `demo` is a human-readable URL suffix. If the URL is
+`https://datalens.ru/connections/r6wa2j1ww5cad`, use the same complete segment as the ID. The same
+rule applies to connections, datasets, and charts. Do not apply the root-level short form to those
+object types.
+
+Treat object IDs as opaque values. Prefer the value from `Copy ID` or the API response's `id`
+field when available. If a URL is ambiguous or does not match these forms, do not guess the ID.
+Do not confuse an object ID with a display name, readable URL suffix, or a field UUID.
+
 ## Object model
 
 Where entries are filed — a separate axis from the flow above. Connections, datasets, charts, and

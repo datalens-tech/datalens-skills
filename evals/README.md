@@ -85,6 +85,11 @@ worded. `datalens` is phrased definitionally ("what is a dataset", "which instal
 should we automate this with"); `datalens-sdk` is phrased imperatively ("build it", "the script
 fails with 409"). Nothing enforces that split but these sets.
 
+`datalens/behavior.json` covers object-ID extraction from URLs, including URLs with a readable
+suffix, URLs containing only the object ID, short root-level dashboard URLs, and ambiguous URLs
+where `Copy ID` or the API `id` field is authoritative. These cases require human or model
+judgement.
+
 So the `should_trigger: false` half of each file is deliberately the *siblings'* territory rather
 than unrelated noise: `datalens/` is fed SDK tasks and HTML-report tasks, `datalens-sdk/` is fed
 orientation questions and "SDK or MCP?" Add a case here whenever a `description` changes.
@@ -100,11 +105,12 @@ The Yandex Team skills are distributed from a separate internal repository and c
 triggering sets there, including the near-misses that point back at these two — an on-premise
 endpoint question must not pull in the internal overlay, and a `yandex-team.ru` one must.
 
-No `behavior.json` for either: neither skill produces an artifact to grade. `datalens` routes, and
-`datalens-sdk` defers to instructions that ship inside the SDK package and are graded in that
-repository. The behaviour worth testing for `datalens-sdk` is that the agent actually resolves and
-reads the package instructions instead of improvising an API — worth adding once the package ships
-them.
+`datalens` routes and its behavior eval checks that URL-derived object IDs are not confused with
+readable suffixes, that short dashboard URLs are recognized, and that ambiguous URLs do not lead to guessed IDs. `datalens-sdk` defers to
+instructions that ship inside the SDK package and are
+graded in that repository. The behaviour worth testing for `datalens-sdk` is that the agent
+actually resolves and reads the package instructions instead of improvising an API — worth adding
+once the package ships them.
 
 ## What runs in CI
 

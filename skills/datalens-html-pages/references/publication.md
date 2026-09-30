@@ -76,8 +76,11 @@ uncertain create result, look for the page at the intended location before retry
 1. Keep the created entry ID from the result. For `createHtmlPage`, it is `entry.entryId`; examine
    `warnings` and report any remaining ones. HTTP 200 alone does not prove the page is correct.
 2. Fetch the page with `getHtmlPage` (`entryId`, `branch: "published"`), or the documented SDK
-   equivalent. Confirm its ID, `scope: "artifact"`, `type: "html-page"`, and requested folder key
-   or workbook/name. If there is no published revision, do not claim publication is complete.
+   equivalent. Confirm its ID, `scope: "artifact"`, and `type: "html-page"`. For a folder, compare
+   the full `entry.key`; for a workbook, compare `entry.workbookId` and the last non-empty segment
+   of `entry.key` with the requested workbook ID and page name. `name` is a creation argument,
+   not a response field.
+   If there is no published revision, do not claim publication is complete.
 3. When checking the stored content, obtain `getHtmlPagePreviewUrl` for the published branch and
    fetch it immediately: the URL expires in seconds. Confirm the expected report content and
    charset. The server injects CSP, so byte-for-byte equality with the original file is not

@@ -113,11 +113,11 @@
     {
       "id": 9,
       "name": "workbook-publication-result-link",
-      "prompt": "My selected client has completed the HTML-page create operation in workbook wb123 with name Sales. Interpret these supplied wire results without making network calls: createHtmlPage returned entry={entryId:page123, scope:artifact, type:html-page, workbookId:wb123, name:Sales, publishedId:rev456, meta:{objectId:bucket789}}, warnings=[]; getHtmlPage for branch=published returned the same entry. The preview fetch returned the expected UTF-8 HTML. The UI endpoint is https://datalens.example.org and the API endpoint is https://api.datalens.example.org. Return the report link and describe what was verified.",
+      "prompt": "My selected client has completed the HTML-page create operation in workbook wb123 with name Sales. Interpret these supplied wire results without making network calls: createHtmlPage returned entry={entryId:page123, scope:artifact, type:html-page, workbookId:wb123, key:Sales, publishedId:rev456, meta:{objectId:bucket789}}, warnings=[]; getHtmlPage for branch=published returned the same entry. The preview fetch returned the expected UTF-8 HTML. The UI endpoint is https://datalens.example.org and the API endpoint is https://api.datalens.example.org. Return the report link and describe what was verified.",
       "expected_output": "https://datalens.example.org/pages/page123, with published metadata and stored content verified and no claim that the final UI rendered.",
       "files": [],
       "assertions": [
-        { "id": "workbook-location", "auto": false, "text": "Recognizes wb123/Sales as the workbook destination and does not substitute a folder key." },
+        { "id": "workbook-location", "auto": false, "text": "Verifies entry.workbookId is wb123 and derives Sales from the last non-empty segment of entry.key; does not expect entry.name or treat the key as a folder destination." },
         { "id": "ui-entry-link", "auto": false, "text": "Builds the permanent link from the UI endpoint and entryId, not the API endpoint, publishedId, objectId, or preview URL." },
         { "id": "verification-boundary", "auto": false, "text": "Distinguishes published-entry and stored-HTML checks from final UI route/browser rendering verification." }
       ]

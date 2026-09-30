@@ -1,5 +1,13 @@
 [
   {
+    "query": "Prepare an HTML report about these imports and upload it to DataLens in Users/alice/reports. Give me the link to the saved report.",
+    "should_trigger": true
+  },
+  {
+    "query": "Publish my existing report.html in DataLens workbook_id abc123 using the Python SDK. Keep the HTML unchanged and return the permanent page link.",
+    "should_trigger": true
+  },
+  {
     "query": "i need to generate a standalone html sales report — quarterly revenue by region, a summary table and a couple of bar charts, and a button to download the underlying data as csv. can you write the html?",
     "should_trigger": true
   },

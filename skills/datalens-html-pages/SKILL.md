@@ -1,7 +1,7 @@
 ---
 name: datalens-html-pages
 description: >-
-  Use this skill to build or fix a standalone HTML page or report in DataLens. DataLens takes
+  Use this skill to build, fix, or publish a standalone HTML page or report in DataLens. DataLens takes
   a whole self-contained HTML document — often an AI-generated report with tables, charts, and
   a CSV/download button — and renders it in a sandboxed, CSP-locked iframe, so normal web code
   silently breaks. Reach for it when generating such a page from scratch, and when one already
@@ -165,6 +165,11 @@ missing charset, mojibake, wrapping code fences, and oversize pages. Run
 `python scripts/validate_page.py --self-test` to check the linter itself.
 
 ## Serve & publish
+
+When asked to upload a report, read [references/publication.md](references/publication.md).
+It covers choosing SDK, MCP, or HTTP API, folder/workbook placement, checking the created page,
+and returning its permanent `/pages/<entryId>` link. Use `datalens-sdk` alongside this skill when
+the user chooses Python SDK publication; this skill still owns HTML constraints and the final URL.
 
 Serving is server-side; know the shape so you author correctly:
 

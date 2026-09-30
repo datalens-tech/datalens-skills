@@ -10,7 +10,8 @@ description: >-
   inspect, import, export, copy, or diagnose DataLens objects with code. NOT for: business
   questions about metric values; viewing or screenshotting the DataLens web UI; embedding or
   iframes; raw SQL/YQL analysis that does not manage DataLens entities; raw HTTP API calls;
-  standalone HTML pages or reports.
+  authoring standalone HTML pages or diagnosing their sandbox/CSP behavior. For publishing an
+  HTML report through the SDK, use this skill alongside `datalens-html-pages`.
 license: Apache-2.0
 metadata:
   domain: datalens
@@ -160,5 +161,11 @@ directory may be read-only or root-owned.
 | Task | Where it belongs |
 |------|------------------|
 | Anything driving DataLens entities from Python | here — load the package instructions above |
-| Standalone HTML pages and reports rendered by DataLens | `datalens-html-pages` |
+| Authoring HTML pages or diagnosing their sandbox/CSP behavior | `datalens-html-pages` |
+| Publishing an HTML page through Python SDK | here for SDK setup and supported operations; `datalens-html-pages` for publication checks and the final link |
 | The DataLens web UI, screenshots, embedding, metric interpretation | neither — say it is out of scope and stop |
+
+For HTML publication, check the installed package's instructions for a documented operation.
+Do not assume HTML-page support or invent a method from an HTTP command name. If it is unsupported,
+report that SDK limitation and offer the MCP/HTTP route described by `datalens-html-pages`; do not
+silently switch interfaces or use a private SDK transport to bypass the package's boundary.

@@ -9,6 +9,12 @@ MOCK_CONFIG="${0}.config"
 if [ "${1:-}" = "-c" ]; then
     MOCK_CODE="${2:-}"
     case "$MOCK_CODE" in
+        *'start_new_session=True'*)
+            shift 2
+            exec "$MOCK_REAL_PYTHON" -c "$MOCK_CODE" "$@"
+            ;;
+    esac
+    case "$MOCK_CODE" in
         *'import pip'*'pip._vendor.packaging.specifiers'*)
             case "$MOCK_PROBE_RUNTIME" in
                 available) exit 0 ;;
@@ -166,6 +172,9 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
                 fail)
                     printf 'ERROR: package index is unavailable\n' >&2
                     exit 1
+                    ;;
+                hang)
+                    while :; do sleep 1; done
                     ;;
             esac
             ;;

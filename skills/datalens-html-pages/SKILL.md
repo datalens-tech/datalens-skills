@@ -166,10 +166,8 @@ missing charset, mojibake, wrapping code fences, and oversize pages. Run
 
 ## Serve & publish
 
-When asked to upload a report, read [references/publication.md](references/publication.md).
-It covers choosing SDK, MCP, or HTTP API, folder/workbook placement, checking the created page,
-and returning its permanent `/pages/<entryId>` link. Use `datalens-sdk` alongside this skill when
-the user chooses Python SDK publication; this skill still owns HTML constraints and the final URL.
+To upload or publish a page and return its permanent link, follow
+[references/publication.md](references/publication.md).
 
 Serving is server-side; know the shape so you author correctly:
 

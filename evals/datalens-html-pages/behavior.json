@@ -1,7 +1,7 @@
 {
   "skill_name": "datalens-html-pages",
   "kind": "behavior",
-  "note": "Given a prompt, does the generated page obey the DataLens sandbox+CSP rules and does publication use the chosen interface, destination, and permanent link? Assertions with \"auto\": true are checked mechanically by grade_report.py (their id matches a check it runs); \"auto\": false ones need human or LLM judgement. Publication cases require mocked clients or supplied results, never live writes. File paths are relative to this directory.",
+  "note": "Given a prompt, does the generated page obey the DataLens sandbox+CSP rules and does publication use the chosen interface, destination, and permanent link? Assertions with \"auto\": true are checked mechanically by grade_report.py (their id matches a check it runs); \"auto\": false ones need human or LLM judgement. File paths are relative to this directory.",
   "evals": [
     {
       "id": 1,
@@ -89,7 +89,7 @@
     {
       "id": 7,
       "name": "publish-to-folder-via-mcp",
-      "prompt": "The HTML report is ready and passes strict validation. Publish it to Users/alice/reports as sales-report using my configured DataLens MCP server. The UI endpoint is https://datalens.example.org, and the installation supports folders. In the mocked tool harness, destination checks succeed; createHtmlPage returns entry.entryId=page123, scope=artifact, type=html-page, key=Users/alice/reports/sales-report, publishedId=revision456, warnings=[]. The published getHtmlPage response matches that entry, and its temporary preview returns the expected UTF-8 HTML. Use only the mocked tools, never a live service. Return the permanent link.",
+      "prompt": "The HTML report is ready and passes strict validation. Publish it to Users/alice/reports as sales-report using my configured DataLens MCP server. The UI endpoint is https://datalens.example.org. Use only the mocked tool harness, never a live service: destination checks succeed; createHtmlPage returns entry.entryId=page123, scope=artifact, type=html-page, publishedId=revision456, warnings=[], and echoes the key it was given. The published getHtmlPage response matches that entry, and its temporary preview returns the expected UTF-8 HTML. Return the permanent link.",
       "expected_output": "Publication through the configured MCP server with the full folder key, verification of the published page, and https://datalens.example.org/pages/page123 as the final link.",
       "files": [],
       "assertions": [
@@ -103,7 +103,7 @@
       "id": 8,
       "name": "sdk-publication-capability-boundary",
       "prompt": "Publish my existing report.html in workbook abc123 as Sales using only my configured Python DataLens SDK. The HTML has passed validation. Bootstrap and installation preflight are already complete; the version-matched package instructions and public API inventory supplied by the harness contain no HTML-page creation operation. Do not contact a live service. Explain whether this can be completed with this SDK.",
-      "expected_output": "A clear unsupported-SDK outcome with an offered MCP/HTTP alternative; no guessed SDK method, private transport call, or silent interface switch.",
+      "expected_output": "A clear unsupported-SDK outcome with an offered SDK upgrade or MCP/HTTP alternative; no guessed SDK method, private transport call, or silent interface switch.",
       "files": [],
       "assertions": [
         { "id": "checks-sdk-capability", "auto": false, "text": "Uses the version-matched package instructions rather than deriving a Python method from createHtmlPage." },
@@ -113,11 +113,11 @@
     {
       "id": 9,
       "name": "workbook-publication-result-link",
-      "prompt": "My selected client has completed the HTML-page create operation in workbook wb123 with name Sales. Interpret these supplied wire results without making network calls: createHtmlPage returned entry={entryId:page123, scope:artifact, type:html-page, workbookId:wb123, key:Sales, publishedId:rev456, meta:{objectId:bucket789}}, warnings=[]; getHtmlPage for branch=published returned the same entry. The preview fetch returned the expected UTF-8 HTML. The UI endpoint is https://datalens.example.org and the API endpoint is https://api.datalens.example.org. Return the report link and describe what was verified.",
+      "prompt": "My selected client has completed the HTML-page create operation in workbook wb123 with name Sales. Interpret these supplied wire results without making network calls: createHtmlPage returned entry={entryId:page123, scope:artifact, type:html-page, workbookId:wb123, key:page123/Sales, publishedId:rev456, meta:{objectId:bucket789}}, warnings=[]; getHtmlPage for branch=published returned the same entry. The preview fetch returned the expected UTF-8 HTML. The UI endpoint is https://datalens.example.org and the API endpoint is https://api.datalens.example.org. Return the report link and describe what was verified.",
       "expected_output": "https://datalens.example.org/pages/page123, with published metadata and stored content verified and no claim that the final UI rendered.",
       "files": [],
       "assertions": [
-        { "id": "workbook-location", "auto": false, "text": "Verifies entry.workbookId is wb123 and derives Sales from the last non-empty segment of entry.key; does not expect entry.name or treat the key as a folder destination." },
+        { "id": "workbook-location", "auto": false, "text": "Verifies workbookId is wb123 and derives Sales from the last non-empty segment of key; does not expect a name field or treat the key as a folder destination." },
         { "id": "ui-entry-link", "auto": false, "text": "Builds the permanent link from the UI endpoint and entryId, not the API endpoint, publishedId, objectId, or preview URL." },
         { "id": "verification-boundary", "auto": false, "text": "Distinguishes published-entry and stored-HTML checks from final UI route/browser rendering verification." }
       ]

@@ -74,9 +74,8 @@ python evals/datalens-html-pages/grade_report.py path/to/generated.html
 `grade_report.py --self-test` grades the **shipped template** — it must pass every mechanical
 check, so it doubles as a regression guard on the exemplar (and runs in CI).
 
-Publication cases use mocked clients or supplied results, never live writes. Their manual
-assertions cover interface selection, SDK capability limits, folder/workbook placement, and
-permanent `/pages/<entryId>` links. The HTML grader does not evaluate these workflows.
+The publication cases run against mocked clients or supplied results, never live writes, and have
+only manual assertions.
 
 ## `datalens/` and `datalens-sdk/`
 

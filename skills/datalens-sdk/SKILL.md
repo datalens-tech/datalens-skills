@@ -10,7 +10,7 @@ description: >-
   inspect, import, export, copy, or diagnose DataLens objects with code. NOT for: business
   questions about metric values; viewing or screenshotting the DataLens web UI; embedding or
   iframes; raw SQL/YQL analysis that does not manage DataLens entities; raw HTTP API calls;
-  standalone HTML pages or reports.
+  standalone HTML pages or reports, except publishing or managing them through this SDK.
 license: Apache-2.0
 metadata:
   domain: datalens
@@ -161,4 +161,5 @@ directory may be read-only or root-owned.
 |------|------------------|
 | Anything driving DataLens entities from Python | here — load the package instructions above |
 | Standalone HTML pages and reports rendered by DataLens | `datalens-html-pages` |
+| Publishing or managing an HTML page through the Python SDK | here, through the operations the package instructions document; if there are none, report that and offer an SDK upgrade or MCP/HTTP. Load `datalens-html-pages` for the publication procedure and the final link |
 | The DataLens web UI, screenshots, embedding, metric interpretation | neither — say it is out of scope and stop |

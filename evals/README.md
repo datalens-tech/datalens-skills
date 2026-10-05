@@ -36,7 +36,7 @@ python skills/datalens-yc-rls-resolve/tests/test_rls_tool.py
 
 ### `triggering.json` — *should the skill fire?*
 
-20 realistic queries labelled `should_trigger` true/false: when `datalens-html-pages` should fire,
+Realistic queries labelled `should_trigger` true/false: when `datalens-html-pages` should fire,
 and the near-misses where it should not (chart-markup, dashboard embedding, generic CSP/sandbox
 questions, plain offline HTML reports, …). The reference set for tuning the frontmatter
 `description`. Bare-array format, as the skill-creator optimizer expects.
@@ -51,7 +51,7 @@ python -m scripts.run_loop \
   --model <model-id> --holdout 0.4 --verbose
 ```
 
-### `behavior.json` — *is the generated page correct?*
+### `behavior.json` — *is the page correct and publication complete?*
 
 Test cases (prompt → assertions) describing what a good generated page looks like: self-contained,
 passes the linter, inlines data instead of fetching, reads theme/lang from the query, exports via
@@ -74,11 +74,14 @@ python evals/datalens-html-pages/grade_report.py path/to/generated.html
 `grade_report.py --self-test` grades the **shipped template** — it must pass every mechanical
 check, so it doubles as a regression guard on the exemplar (and runs in CI).
 
+The publication cases run against mocked clients or supplied results, never live writes, and have
+only manual assertions.
+
 ## `datalens/` and `datalens-sdk/`
 
 ### `triggering.json` — *which of the DataLens skills fires?*
 
-20 cases each, same bare-array format and same runner as above. These two matter more than a
+Same bare-array format and same runner as above. These two matter more than a
 per-skill set usually would, because the DataLens skills share a vocabulary — "дашборд", "датасет",
 "чарт" appear in all of them — and the only thing keeping them apart is how each `description` is
 worded. `datalens` is phrased definitionally ("what is a dataset", "which installation", "what

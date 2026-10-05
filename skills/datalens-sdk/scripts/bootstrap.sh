@@ -52,6 +52,66 @@ BOOTSTRAP_REASON=""
 BOOTSTRAP_STATUS="blocked"
 BOOTSTRAP_ACTION="check"
 BOOTSTRAP_EXPECTED_SDK_VERSION=""
+BOOTSTRAP_VERSION_CHECK_TIMEOUT_SECONDS=15
+BOOTSTRAP_VERSION_CHECK_DEADLINE=0
+BOOTSTRAP_COMMAND_TIMED_OUT=no
+BOOTSTRAP_TIMEOUT_LAUNCHER='import os, signal, subprocess, sys
+
+process = subprocess.Popen(sys.argv[1:], start_new_session=True)
+
+def process_descendants(root_pid):
+    try:
+        output = subprocess.check_output(
+            ["ps", "-A", "-o", "pid=", "-o", "ppid="], stderr=subprocess.DEVNULL
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
+    parents = {}
+    for row in output.decode(errors="replace").splitlines():
+        fields = row.split()
+        if len(fields) == 2 and fields[0].isdigit() and fields[1].isdigit():
+            parents[int(fields[1])] = parents.get(int(fields[1]), []) + [int(fields[0])]
+    descendants = []
+    pending = [root_pid]
+    while pending:
+        children = parents.get(pending.pop(), [])
+        descendants.extend(children)
+        pending.extend(children)
+    return descendants
+
+def signal_process_tree(signum, known_descendants):
+    try:
+        os.killpg(process.pid, signum)
+        return
+    except (PermissionError, ProcessLookupError):
+        descendants = process_descendants(process.pid) or known_descendants
+    for pid in reversed(descendants):
+        try:
+            os.kill(pid, signum)
+        except (PermissionError, ProcessLookupError):
+            pass
+    try:
+        process.send_signal(signum)
+    except ProcessLookupError:
+        pass
+
+def terminate(signum, _frame):
+    descendants = process_descendants(process.pid)
+    signal_process_tree(signal.SIGTERM, descendants)
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
+    signal_process_tree(signal.SIGKILL, descendants)
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
+    raise SystemExit(128 + signum)
+
+signal.signal(signal.SIGTERM, terminate)
+signal.signal(signal.SIGINT, terminate)
+raise SystemExit(process.wait())'
 
 PROBE_RESULT=""
 PROBE_PYTHON=""
@@ -539,6 +599,68 @@ bootstrap_merge_requirements() {
     BOOTSTRAP_REQUIRES_PYTHON="$merged"
 }
 
+bootstrap_run_with_timeout() {
+    local launcher_python="$1"
+    local query_log="$2"
+    local timeout_marker="${BOOTSTRAP_TMP_ROOT}/query-timeout.$$.marker"
+    local timeout_seconds=""
+    local command_pid=""
+    local watchdog_pid=""
+    local command_status=0
+    shift 2
+
+    BOOTSTRAP_COMMAND_TIMED_OUT=no
+    timeout_seconds=$((BOOTSTRAP_VERSION_CHECK_DEADLINE - SECONDS))
+    if [ "$timeout_seconds" -le 0 ]; then
+        BOOTSTRAP_COMMAND_TIMED_OUT=yes
+        return 124
+    fi
+
+    rm -f "$timeout_marker"
+    (exec "$launcher_python" -c "$BOOTSTRAP_TIMEOUT_LAUNCHER" "$@") >"$query_log" 2>&1 &
+    command_pid=$!
+    (
+        sleep "$timeout_seconds" &
+        watchdog_sleep_pid=$!
+        trap 'kill "$watchdog_sleep_pid" 2>/dev/null || true; wait "$watchdog_sleep_pid" 2>/dev/null || true; exit 0' TERM INT
+        wait "$watchdog_sleep_pid"
+        if kill -0 "$command_pid" 2>/dev/null; then
+            : >"$timeout_marker"
+            kill -TERM "$command_pid" 2>/dev/null || true
+            sleep 2
+            kill -KILL "$command_pid" 2>/dev/null || true
+        fi
+    ) &
+    watchdog_pid=$!
+
+    if wait "$command_pid"; then
+        command_status=0
+    else
+        command_status=$?
+    fi
+    kill -TERM "$watchdog_pid" 2>/dev/null || true
+    wait "$watchdog_pid" 2>/dev/null || true
+
+    if [ -f "$timeout_marker" ]; then
+        BOOTSTRAP_COMMAND_TIMED_OUT=yes
+        return 124
+    fi
+    return "$command_status"
+}
+
+bootstrap_emit_freshness_fallback() {
+    BOOTSTRAP_VENV_STATE="reused"
+    BOOTSTRAP_SDK="installed"
+    BOOTSTRAP_REASON="$1"
+    BOOTSTRAP_STATUS="ready"
+    if [ "$1" = "sdk_freshness_check_timeout" ]; then
+        bootstrap_note "The ${BOOTSTRAP_DISTRIBUTION} freshness check timed out after ${BOOTSTRAP_VERSION_CHECK_TIMEOUT_SECONDS} seconds; continuing with the installed ${BOOTSTRAP_DISTRIBUTION} ${BOOTSTRAP_SDK_VERSION}."
+    else
+        bootstrap_note "Could not check for a newer ${BOOTSTRAP_DISTRIBUTION} release; continuing with the installed ${BOOTSTRAP_DISTRIBUTION} ${BOOTSTRAP_SDK_VERSION}."
+    fi
+    bootstrap_emit
+}
+
 bootstrap_extract_index_version() {
     awk -v distribution="$BOOTSTRAP_DISTRIBUTION" '
         index($0, distribution " (") == 1 && $0 ~ /\)$/ {
@@ -574,8 +696,10 @@ bootstrap_probe() {
     if [ "$base_python" = "$BOOTSTRAP_PYTHON" ] && [ -d "$BOOTSTRAP_VENV" ]; then
         probe_virtualenv="$BOOTSTRAP_VENV"
     fi
-    if VIRTUAL_ENV="$probe_virtualenv" "$PROBE_PYTHON" -m pip index versions "$BOOTSTRAP_DISTRIBUTION" \
-        --disable-pip-version-check --no-input --no-color -v >"$query_log" 2>&1; then
+    BOOTSTRAP_VERSION_CHECK_DEADLINE=$((SECONDS + BOOTSTRAP_VERSION_CHECK_TIMEOUT_SECONDS))
+    if VIRTUAL_ENV="$probe_virtualenv" bootstrap_run_with_timeout "$PROBE_PYTHON" "$query_log" \
+        "$PROBE_PYTHON" -m pip index versions "$BOOTSTRAP_DISTRIBUTION" \
+        --disable-pip-version-check --no-input --no-color -v; then
         PROBE_SDK_VERSION="$(bootstrap_extract_index_version "$query_log")"
         if [ -z "$PROBE_SDK_VERSION" ]; then
             PROBE_RESULT="failed"
@@ -586,6 +710,11 @@ bootstrap_probe() {
         return 0
     fi
 
+    if [ "$BOOTSTRAP_COMMAND_TIMED_OUT" = "yes" ]; then
+        PROBE_RESULT="failed"
+        PROBE_REASON="package_index_query_timeout"
+        return 0
+    fi
     PROBE_REQUIREMENTS="$(bootstrap_extract_requirements "$query_log")"
     if [ -n "$PROBE_REQUIREMENTS" ]; then
         PROBE_RESULT="incompatible"
@@ -597,9 +726,9 @@ bootstrap_probe() {
     # incompatible Requires-Python without emitting the requirement. Retry the
     # same read-only query without Python filtering: success proves that the
     # package source is reachable and that this interpreter is the mismatch.
-    if VIRTUAL_ENV="$probe_virtualenv" "$PROBE_PYTHON" -m pip index versions "$BOOTSTRAP_DISTRIBUTION" \
-        --disable-pip-version-check --no-input --no-color --ignore-requires-python \
-        >"$query_log" 2>&1; then
+    if VIRTUAL_ENV="$probe_virtualenv" bootstrap_run_with_timeout "$PROBE_PYTHON" "$query_log" \
+        "$PROBE_PYTHON" -m pip index versions "$BOOTSTRAP_DISTRIBUTION" \
+        --disable-pip-version-check --no-input --no-color --ignore-requires-python; then
         PROBE_SDK_VERSION="$(bootstrap_extract_index_version "$query_log")"
         if [ -n "$PROBE_SDK_VERSION" ]; then
             PROBE_RESULT="incompatible"
@@ -609,7 +738,11 @@ bootstrap_probe() {
     fi
 
     PROBE_RESULT="failed"
-    PROBE_REASON="package_index_query_failed"
+    if [ "$BOOTSTRAP_COMMAND_TIMED_OUT" = "yes" ]; then
+        PROBE_REASON="package_index_query_timeout"
+    else
+        PROBE_REASON="package_index_query_failed"
+    fi
 }
 
 bootstrap_extract_managed_version() {
@@ -644,8 +777,11 @@ bootstrap_probe_managed_ownership() {
     MANAGED_OWNERSHIP_RESULT="failed"
     case "$MANAGED_SOURCE" in
         uv)
-            uv sync --dry-run --python "$base_python" --no-progress --color never \
-                >"$query_log" 2>&1 || return 0
+            if ! bootstrap_run_with_timeout "$base_python" "$query_log" \
+                uv sync --dry-run --python "$base_python" --no-progress --color never; then
+                [ "$BOOTSTRAP_COMMAND_TIMED_OUT" = "yes" ] && MANAGED_OWNERSHIP_RESULT="timeout"
+                return 0
+            fi
             grep -Eiq "^[[:space:]]*-[[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([=[:space:]]|$)" "$query_log" \
                 && sdk_remove="yes"
             grep -Eiq "^[[:space:]]*[+][[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([=[:space:]]|$)" "$query_log" \
@@ -659,8 +795,11 @@ bootstrap_probe_managed_ownership() {
             fi
             ;;
         poetry)
-            poetry install --sync --dry-run --no-interaction --no-ansi \
-                >"$query_log" 2>&1 || return 0
+            if ! bootstrap_run_with_timeout "$base_python" "$query_log" \
+                poetry install --sync --dry-run --no-interaction --no-ansi; then
+                [ "$BOOTSTRAP_COMMAND_TIMED_OUT" = "yes" ] && MANAGED_OWNERSHIP_RESULT="timeout"
+                return 0
+            fi
             if grep -Eiq "(installing|updating|downgrading)[[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([[:space:](]|$)" \
                 "$query_log"; then
                 MANAGED_OWNERSHIP_RESULT="drifted"
@@ -691,26 +830,44 @@ bootstrap_probe_managed() {
 
     case "$MANAGED_SOURCE" in
         uv)
-            uv lock --dry-run --upgrade-package "$BOOTSTRAP_DISTRIBUTION" --python "$base_python" \
-                --no-progress --color never >"$query_log" 2>&1 || {
-                    PROBE_RESULT="failed"
+            if ! bootstrap_run_with_timeout "$base_python" "$query_log" uv lock --dry-run \
+                --upgrade-package "$BOOTSTRAP_DISTRIBUTION" --python "$base_python" \
+                --no-progress --color never; then
+                PROBE_RESULT="failed"
+                if [ "$BOOTSTRAP_COMMAND_TIMED_OUT" = "yes" ]; then
+                    PROBE_REASON="package_index_query_timeout"
+                else
                     PROBE_REASON="package_index_query_failed"
-                    return 0
-                }
+                fi
+                return 0
+            fi
             ;;
         poetry)
             if [ -n "$BOOTSTRAP_POETRY_SOURCE" ]; then
-                poetry add --dry-run --no-interaction --no-ansi \
-                    "${BOOTSTRAP_DISTRIBUTION}@latest" --source "$BOOTSTRAP_POETRY_SOURCE" \
-                    >"$query_log" 2>&1
-            else
-                poetry add --dry-run --no-interaction --no-ansi \
-                    "${BOOTSTRAP_DISTRIBUTION}@latest" >"$query_log" 2>&1
-            fi || {
+                if ! bootstrap_run_with_timeout "$base_python" "$query_log" \
+                    poetry add --dry-run --no-interaction --no-ansi \
+                    "${BOOTSTRAP_DISTRIBUTION}@latest" --source "$BOOTSTRAP_POETRY_SOURCE"; then
                     PROBE_RESULT="failed"
-                    PROBE_REASON="package_index_query_failed"
+                    if [ "$BOOTSTRAP_COMMAND_TIMED_OUT" = "yes" ]; then
+                        PROBE_REASON="package_index_query_timeout"
+                    else
+                        PROBE_REASON="package_index_query_failed"
+                    fi
                     return 0
-                }
+                fi
+            else
+                if ! bootstrap_run_with_timeout "$base_python" "$query_log" \
+                    poetry add --dry-run --no-interaction --no-ansi \
+                    "${BOOTSTRAP_DISTRIBUTION}@latest"; then
+                    PROBE_RESULT="failed"
+                    if [ "$BOOTSTRAP_COMMAND_TIMED_OUT" = "yes" ]; then
+                        PROBE_REASON="package_index_query_timeout"
+                    else
+                        PROBE_REASON="package_index_query_failed"
+                    fi
+                    return 0
+                fi
+            fi
             ;;
         *)
             PROBE_RESULT="failed"
@@ -1071,8 +1228,19 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
     esac
     BOOTSTRAP_SDK_VERSION="$(bootstrap_sdk_version "$BOOTSTRAP_PYTHON")"
     if [ -n "$BOOTSTRAP_SDK_VERSION" ] && [ -n "$MANAGED_SOURCE" ]; then
+        BOOTSTRAP_VERSION_CHECK_DEADLINE=$((SECONDS + BOOTSTRAP_VERSION_CHECK_TIMEOUT_SECONDS))
         bootstrap_probe_managed_ownership "$BOOTSTRAP_PYTHON"
         case "$MANAGED_OWNERSHIP_RESULT" in
+            timeout)
+                if [ "$BOOTSTRAP_ACTION" = "check" ]; then
+                    bootstrap_emit_freshness_fallback "sdk_freshness_check_timeout"
+                else
+                    BOOTSTRAP_VENV_STATE="reused"
+                    BOOTSTRAP_SDK="installed"
+                    bootstrap_emit_version_decision "sdk_version_check_failed"
+                fi
+                exit 0
+                ;;
             owned) : ;;
             unowned|drifted)
                 bootstrap_note "The installed ${BOOTSTRAP_DISTRIBUTION} does not exactly match ${MANAGED_SOURCE} synchronization; manager reconciliation is required."
@@ -1099,6 +1267,18 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
         bootstrap_merge_requirements "$PROBE_REQUIREMENTS"
         if [ "$PROBE_RESULT" != "compatible" ] || [ -z "$PROBE_SDK_VERSION" ]; then
             BOOTSTRAP_AVAILABLE_SDK_VERSION=""
+            if [ "$BOOTSTRAP_ACTION" = "check" ]; then
+                case "$PROBE_REASON" in
+                    package_index_query_timeout)
+                        bootstrap_emit_freshness_fallback "sdk_freshness_check_timeout"
+                        exit 0
+                        ;;
+                    package_index_query_failed)
+                        bootstrap_emit_freshness_fallback "sdk_freshness_check_failed"
+                        exit 0
+                        ;;
+                esac
+            fi
             bootstrap_emit_version_decision "sdk_version_check_failed"
             exit 0
         fi

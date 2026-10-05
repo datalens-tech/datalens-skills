@@ -55,6 +55,8 @@ directly.
 Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
 
 - `STATUS=ready` — use the absolute interpreter from `PYTHON` for every subsequent Python call.
+  - `REASON=sdk_freshness_check_timeout` — tell the user the 15-second package-index check timed out and that you are continuing with the installed `SDK_VERSION`. Do not ask whether to continue or describe the installed version as current.
+  - `REASON=sdk_freshness_check_failed` — tell the user: “Could not check for a newer SDK release; continuing with the installed `SDK_VERSION`.” Match the user's language. Do not ask whether to continue or describe the installed version as current.
 - `STATUS=decision_required` — do not load the package skill or perform SDK work yet:
   - `REASON=sdk_install_required` — a uv/Poetry project needs `datalens-sdk` installed through its
     manager. The dependency may already be declared but missing from an unsynced environment, or
@@ -89,10 +91,9 @@ Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
   - `REASON=sdk_upgrade_target_unavailable` — the approved version is no longer the compatible
     release offered by the index, and bootstrap will not downgrade or guess. Ask whether to keep
     the installed version or retry the original check later.
-  - `REASON=sdk_version_check_failed` with `SDK=installed` — explain that the installed SDK works
-    but its freshness or manager ownership could not be verified. Ask whether to continue with the
-    reported `SDK_VERSION` or retry the original bootstrap command. Do not silently continue or
-    describe it as current. This reason never applies to `SDK=missing`.
+  - `REASON=sdk_version_check_failed` with `SDK=installed` — explain that the manager could not
+    verify ownership of the installed SDK. Ask whether to continue with the reported `SDK_VERSION`
+    or retry the original bootstrap command. This reason never applies to `SDK=missing`.
   - `REASON=sdk_upgrade_failed` with `SDK=installed` — explain that the upgrade failed but the
     reported `SDK_VERSION` remains usable. Ask whether to continue with it or stop; retry the exact
     upgrade command only if the user requests it.

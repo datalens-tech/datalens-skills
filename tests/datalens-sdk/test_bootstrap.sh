@@ -33,10 +33,19 @@ make_tools() {
     local tool=""
     local tool_path=""
     mkdir -p "$tools_dir"
-    for tool in awk cat chmod cp grep mkdir mktemp paste rm sort touch tr; do
+    for tool in awk cat chmod cp grep mkdir mktemp paste rm sleep sort touch tr; do
         tool_path="$(command -v "$tool")"
         ln -s "$tool_path" "${tools_dir}/${tool}"
     done
+}
+
+make_fast_timeout() {
+    rm -f "$CASE_TOOLS/sleep"
+    cat >"$CASE_TOOLS/sleep" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+    chmod +x "$CASE_TOOLS/sleep"
 }
 
 make_python() {
@@ -77,6 +86,7 @@ make_python() {
         printf 'MOCK_PROBE_RUNTIME=%q\n' "$probe_runtime"
         printf 'MOCK_REQUIRED_PIP_CONFIG=%q\n' "$required_pip_config"
         printf 'MOCK_VENV_PROBE_RUNTIME=%q\n' "$venv_probe_runtime"
+        printf 'MOCK_REAL_PYTHON=%q\n' "$TEST_SYSTEM_PYTHON"
         printf 'MOCK_IS_VIRTUALENV=no\n'
         printf 'MOCK_CALL_LOG=%q\n' "${CASE_DIR}/python-calls"
     } >"${python_path}.config"
@@ -118,7 +128,11 @@ case "${1:-}" in
         ;;
     lock)
         printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
-        [ "${MOCK_MANAGER_RESOLVE_MODE:-success}" = "success" ] || exit 1
+        case "${MOCK_MANAGER_RESOLVE_MODE:-success}" in
+            success) : ;;
+            hang) while :; do :; done ;;
+            *) exit 1 ;;
+        esac
         current="$(<"${MOCK_UV_PYTHON:?}.sdk-installed")"
         if [ "$current" != "${MOCK_MANAGER_AVAILABLE_VERSION:?}" ]; then
             printf 'Updated datalens-sdk v%s -> v%s\n' "$current" "$MOCK_MANAGER_AVAILABLE_VERSION"
@@ -131,6 +145,7 @@ case "${1:-}" in
         case "$*" in
             *'--dry-run'*)
                 case "${MOCK_MANAGER_OWNERSHIP_MODE:-owned}" in
+                    hang) while :; do :; done ;;
                     owned) printf 'Audited project environment\n' ;;
                     unowned)
                         printf 'Would uninstall 1 package\n'
@@ -204,7 +219,11 @@ case "${1:-}" in
     add)
         printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
         if [ "${2:-}" = "--dry-run" ]; then
-            [ "${MOCK_MANAGER_RESOLVE_MODE:-success}" = "success" ] || exit 1
+            case "${MOCK_MANAGER_RESOLVE_MODE:-success}" in
+                success) : ;;
+                hang) while :; do :; done ;;
+                *) exit 1 ;;
+            esac
             current="$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")"
             if [ "$current" != "${MOCK_MANAGER_AVAILABLE_VERSION:?}" ]; then
                 printf '  - Updating datalens-sdk (%s -> %s)\n' "$current" "$MOCK_MANAGER_AVAILABLE_VERSION"
@@ -225,6 +244,7 @@ case "${1:-}" in
         case "$*" in
             *'--sync --dry-run'*)
                 case "${MOCK_MANAGER_OWNERSHIP_MODE:-owned}" in
+                    hang) while :; do :; done ;;
                     owned) printf 'No dependencies to install or update\n' ;;
                     unowned)
                         printf 'Package operations: 0 installs, 0 updates, 1 removal\n'
@@ -337,6 +357,80 @@ test_environment_identity_is_rechecked_before_project_pip() {
     assert_contains "$CASE_OUTPUT" "STATUS=blocked"
     assert_not_contains "$CASE_ERROR_OUTPUT" "Installing datalens-sdk"
     [ ! -e "$CASE_PROJECT/.venv/bin/python.sdk-installed" ] || fail "identity change reached project pip"
+}
+
+test_uv_version_check_timeout_continues_with_installed_sdk() {
+    new_case uv-version-check-timeout
+    touch "$CASE_PROJECT/uv.lock"
+    MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_UV_PYTHON
+    make_python "$MOCK_UV_PYTHON" "7.4.2" success "9.8.7" success ">=3" yes
+    make_uv "$CASE_TOOLS/uv"
+    MOCK_MANAGER_RESOLVE_MODE="hang"
+    export MOCK_MANAGER_RESOLVE_MODE
+    make_fast_timeout
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "SDK=installed"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_freshness_check_timeout"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    [ "$(<"$MOCK_UV_PYTHON.sdk-installed")" = "9.8.7" ] || fail "timed-out uv version check modified installed SDK"
+}
+
+test_poetry_version_check_timeout_continues_with_installed_sdk() {
+    new_case poetry-version-check-timeout
+    touch "$CASE_PROJECT/poetry.lock"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_POETRY_PYTHON
+    make_python "$MOCK_POETRY_PYTHON" "7.4.2" success "9.8.7" success ">=3" yes
+    make_poetry "$CASE_TOOLS/poetry"
+    MOCK_MANAGER_RESOLVE_MODE="hang"
+    export MOCK_MANAGER_RESOLVE_MODE
+    make_fast_timeout
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "SDK=installed"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_freshness_check_timeout"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    [ "$(<"$MOCK_POETRY_PYTHON.sdk-installed")" = "9.8.7" ] || fail "timed-out Poetry version check modified installed SDK"
+}
+
+test_uv_ownership_timeout_continues_with_installed_sdk() {
+    new_case uv-ownership-timeout
+    touch "$CASE_PROJECT/uv.lock"
+    MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_UV_PYTHON
+    make_python "$MOCK_UV_PYTHON" "7.4.2" success "9.8.7" success ">=3" yes
+    make_uv "$CASE_TOOLS/uv"
+    MOCK_MANAGER_OWNERSHIP_MODE="hang"
+    export MOCK_MANAGER_OWNERSHIP_MODE
+    make_fast_timeout
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "SDK=installed"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_freshness_check_timeout"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    [ "$(<"$MOCK_UV_PYTHON.sdk-installed")" = "9.8.7" ] || fail "timed-out uv ownership check changed installed SDK"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "lock --dry-run"
+}
+
+test_poetry_ownership_timeout_continues_with_installed_sdk() {
+    new_case poetry-ownership-timeout
+    touch "$CASE_PROJECT/poetry.lock"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_POETRY_PYTHON
+    make_python "$MOCK_POETRY_PYTHON" "7.4.2" success "9.8.7" success ">=3" yes
+    make_poetry "$CASE_TOOLS/poetry"
+    MOCK_MANAGER_OWNERSHIP_MODE="hang"
+    export MOCK_MANAGER_OWNERSHIP_MODE
+    make_fast_timeout
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "SDK=installed"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_freshness_check_timeout"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    [ "$(<"$MOCK_POETRY_PYTHON.sdk-installed")" = "9.8.7" ] || fail "timed-out Poetry ownership check changed installed SDK"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add --dry-run"
 }
 
 test_uv_managed_environment_is_reused() {
@@ -903,15 +997,39 @@ test_approved_version_disappearing_never_downgrades() {
     [ "$(<"$CASE_PROJECT/.venv/bin/python.sdk-installed")" = "9.8.7" ] || fail "unavailable target caused a downgrade"
 }
 
-test_version_check_failure_preserves_working_sdk() {
+test_version_check_timeout_continues_with_working_sdk() {
+    new_case version-check-timeout
+    make_python "$CASE_PROJECT/.venv/bin/python" "7.4.2" hang "unused" success ">=3" yes success "9.8.7"
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "SDK=installed"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_freshness_check_timeout"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$CASE_ERROR_OUTPUT" "timed out after 15 seconds"
+    [ "$(<"$CASE_PROJECT/.venv/bin/python.sdk-installed")" = "9.8.7" ] || fail "timed-out version check modified installed SDK"
+}
+
+test_version_check_failure_continues_with_working_sdk() {
     new_case version-check-failure
     make_python "$CASE_PROJECT/.venv/bin/python" "7.4.2" fail "unused" success ">=3" yes success "9.8.7"
     run_bootstrap
     assert_contains "$CASE_OUTPUT" "SDK=installed"
     assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_freshness_check_failed"
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$CASE_ERROR_OUTPUT" "Could not check for a newer SDK release"
+    [ "$(<"$CASE_PROJECT/.venv/bin/python.sdk-installed")" = "9.8.7" ] || fail "failed version check modified installed SDK"
+}
+
+test_approved_upgrade_version_check_failure_still_requires_decision() {
+    new_case approved-upgrade-version-check-failure
+    make_python "$CASE_PROJECT/.venv/bin/python" "7.4.2" fail "unused" success ">=3" yes success "9.8.7" newer
+    run_bootstrap --upgrade-sdk 9.9.0
+    assert_contains "$CASE_OUTPUT" "SDK=installed"
+    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
     assert_contains "$CASE_OUTPUT" "REASON=sdk_version_check_failed"
     assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
-    [ "$(<"$CASE_PROJECT/.venv/bin/python.sdk-installed")" = "9.8.7" ] || fail "failed version check modified installed SDK"
+    [ "$(<"$CASE_PROJECT/.venv/bin/python.sdk-installed")" = "9.8.7" ] || fail "failed approved upgrade changed SDK"
 }
 
 test_failed_upgrade_reports_healthy_installed_version() {
@@ -1274,6 +1392,9 @@ test_skill_documents_consent_protocol() {
         'REASON=sdk_install_required' \
         'REASON=sdk_update_available' \
         'REASON=sdk_version_check_failed' \
+        'REASON=sdk_freshness_check_timeout' \
+        'REASON=sdk_freshness_check_failed' \
+        'Could not check for a newer SDK release' \
         'REASON=sdk_upgrade_failed' \
         'REASON=sdk_upgrade_target_unavailable' \
         'managed_environment_unavailable' \
@@ -1311,6 +1432,10 @@ for test_name in \
     test_environment_identity_is_rechecked_before_project_pip \
     test_uv_managed_environment_is_reused \
     test_poetry_managed_environment_is_reused \
+    test_uv_version_check_timeout_continues_with_installed_sdk \
+    test_poetry_version_check_timeout_continues_with_installed_sdk \
+    test_uv_ownership_timeout_continues_with_installed_sdk \
+    test_poetry_ownership_timeout_continues_with_installed_sdk \
     test_uv_marker_only_is_detected_with_bsd_grep \
     test_poetry_marker_only_is_detected_with_bsd_grep \
     test_uv_array_source_marker_uses_native_resolver \
@@ -1338,7 +1463,9 @@ for test_name in \
     test_approved_upgrade_installs_exact_reported_version \
     test_changed_available_version_requires_fresh_decision \
     test_approved_version_disappearing_never_downgrades \
-    test_version_check_failure_preserves_working_sdk \
+    test_version_check_timeout_continues_with_working_sdk \
+    test_version_check_failure_continues_with_working_sdk \
+    test_approved_upgrade_version_check_failure_still_requires_decision \
     test_failed_upgrade_reports_healthy_installed_version \
     test_installed_version_newer_than_index_is_not_downgraded \
     test_pep440_multi_digit_versions_use_probe_comparator \

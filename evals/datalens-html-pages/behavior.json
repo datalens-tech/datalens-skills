@@ -135,7 +135,7 @@
         { "id": "guids-not-titles", "auto": false, "text": "Passes the given field GUIDs in columns/filters/sort, with sort fields also present in columns." },
         { "id": "state-roundtrip", "auto": false, "text": "Calls getState at start-up and applies the restored year before the first data request; calls createState on the share action with only the selection, not query results." },
         { "id": "degrades", "auto": false, "text": "Shows a visible message when a call is rejected (METHOD_NOT_ALLOWED, TIMEOUT, NOT_FRAMED, access errors) instead of a blank page." },
-        { "id": "names-permissions", "auto": false, "text": "Tells the user the page needs getDatasetData, getState and createState allowed at upload (or passes them as allowedApiMethods when publishing), and that the host API is experimental and off in production." },
+        { "id": "names-permissions", "auto": false, "text": "Tells the user the page needs getDatasetData, getState and createState allowed at upload together with dataset ds123 in the list of allowed objects (or passes allowedApiMethods and allowedEntryIds when publishing), and that the host API is experimental and off in production." },
         { "id": "no-exfiltration", "auto": false, "text": "Does not put received rows into OPEN_URL links, and does not navigate the frame." }
       ]
     }

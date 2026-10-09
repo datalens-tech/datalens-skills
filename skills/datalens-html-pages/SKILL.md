@@ -145,8 +145,9 @@ shareable view; a snapshot report still inlines its data. Three things to get ri
 
 - **It is off in production** and needs per-page permissions. Handle rejected calls
   (`METHOD_NOT_ALLOWED`, `TIMEOUT`, `NOT_FRAMED`) with a visible message instead of a blank page.
-- **Tell the user which methods to allow** when uploading (`getDatasetData`, `getChartData`,
-  `getState`/`createState`), or pass them as `allowedApiMethods` when you publish.
+- **Tell the user what to allow** when uploading: the methods (`getDatasetData`, `getChartData`,
+  `getState`/`createState`) and every dataset and chart the page reads, by ID and name. When you
+  publish yourself, pass them as `allowedApiMethods` and `allowedEntryIds`.
 - **Look up field GUIDs before writing the page**; no host method lists a dataset's fields.
 
 Arguments, result shapes, errors and the raw message format are in
@@ -222,6 +223,7 @@ asked to download, and never navigate the frame elsewhere (the host blocks that 
 | Library never loads / CSP error in console | script/style host off the allowlist | serve it from jsdelivr / cdnjs / tailwind / yastatic |
 | Data never appears | code calls `fetch`/XHR | inline the dataset into the page at generation time, or request it through the host API |
 | Host API call rejected with `METHOD_NOT_ALLOWED` | the page was uploaded without that method, or the installation has the host API off (production) | re-upload with the method allowed; show a fallback where it is off |
+| Host API call rejected with `ENTRY_NOT_ALLOWED` | the dataset or chart is not in the page's list of allowed objects | add it to the list (the upload form saves the list without a new file) |
 | Host API call never resolves | the request carried no `MessagePort`, or the page was opened outside DataLens | use `assets/dl-host-api.js`, which times out and rejects |
 | Shared link opens the default view | state saved but never restored | call `getState()` at start-up and apply `data` before the first query |
 | "localStorage is not available" / throws | storage API in sandbox | keep state in memory |

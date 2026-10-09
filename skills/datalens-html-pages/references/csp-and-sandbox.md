@@ -113,7 +113,8 @@ Use the framed-only delegated listener in
 [authoring-constraints.md](authoring-constraints.md), which leaves in-page anchors alone.
 
 **Call the host API** (experimental) — the only way a page gets live data. The page posts a
-request, the host checks the method against the page's own permission list, runs it through the
+request, the host checks the method and the requested dataset or chart against the page's own
+permission lists, paces the page's requests, runs the call through the
 DataLens UI gateway as the viewer, and answers on the `MessagePort` sent with the request:
 
 ```js

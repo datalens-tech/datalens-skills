@@ -27,22 +27,31 @@ Consequences worth designing around:
 
 ## Permissions
 
-Each page carries its own list of allowed methods, set when the file is uploaded or replaced.
-A method that is not on the list is rejected with `METHOD_NOT_ALLOWED`.
+Each page carries two lists, set when the file is uploaded or changed later without a new file:
+the methods it may call, and the datasets and charts it may read. A method that is not on the
+first list is rejected with `METHOD_NOT_ALLOWED`; a dataset or chart that is not on the second
+with `ENTRY_NOT_ALLOWED`. Both lists are empty by default, so a page gets nothing until its
+uploader grants it.
 
 | Method | Allows |
 |--------|--------|
-| `getDatasetData` | querying any dataset the viewer can read |
-| `getChartData` | reading the data of any saved chart the viewer can open |
+| `getDatasetData` | querying the listed datasets, as far as the viewer can read them |
+| `getChartData` | reading the data of the listed saved charts, as far as the viewer can open them |
 | `getState`, `createState` | saving the page's own state and restoring it from a link |
 
-- **In the UI:** the upload form has a checkbox per group; tick them before choosing the file.
-- **Through the API:** pass `allowedApiMethods` to `createHtmlPage` / `updateHtmlPage`, for
-  example `"allowedApiMethods": ["getDatasetData", "getState", "createState"]`. On update, omit
-  the field to keep the current list; pass `[]` to revoke everything.
+- **In the UI:** the upload form has a checkbox per method group and a picker for datasets and
+  charts (search by name, or paste IDs); set both before choosing the file. The same form saves
+  the lists later without a new file.
+- **Through the API:** pass `allowedApiMethods` and `allowedEntryIds` to `createHtmlPage` /
+  `updateHtmlPage`, for example `"allowedApiMethods": ["getDatasetData", "getState",
+  "createState"], "allowedEntryIds": ["<datasetId>"]`. On update, omit a field to keep the
+  current list and pass `[]` to revoke everything; omit `content` to change only the lists. Up
+  to 50 entries. The entries are stored as links of the page, so they show up among its related
+  objects.
 
-Ask for the methods the page actually calls and nothing more. Tell the user which ones the page
-needs, because a page uploaded without them looks broken rather than unauthorized.
+Ask for the methods and objects the page actually uses and nothing more. Give the user the
+exact list — method names and the ID and name of every dataset and chart — because a page
+uploaded without them looks broken rather than unauthorized.
 
 ## The message protocol
 
@@ -54,9 +63,11 @@ port1.onmessage = ({ data }) => { /* { result } or { error: { code, message, sta
 parent.postMessage({ code: 'API_REQUEST', data: { method, args } }, '*', [port2]);
 ```
 
-A request without a port gets no answer. The host answers only the frame it rendered and runs at
-most 6 requests at a time for a page; a seventh is rejected with `TOO_MANY_REQUESTS`, so queue
-requests rather than firing one per table cell.
+A request without a port gets no answer. The host answers only the frame it rendered, and it
+paces the page: 4 requests run at a time and up to 50 more wait in a queue; after a burst of 20
+the queue drains at about 2 requests a second. A request that finds the queue full is rejected
+with `TOO_MANY_REQUESTS`. `createState` has its own limit: 3 in a row, then one every 10
+seconds. So one request per widget is fine, one per table cell is not.
 
 **Use the bundled client** instead of writing this by hand: inline the contents of
 [../assets/dl-host-api.js](../assets/dl-host-api.js) into the page's `<script>`. It pairs each
@@ -72,7 +83,8 @@ const { rows } = await DataLens.getDatasetData({ datasetId, columns: [regionGuid
 | `error.code` | Meaning | What the page should do |
 |--------------|---------|-------------------------|
 | `METHOD_NOT_ALLOWED` | the method is not in the page's permissions, or the host API is off in this installation | say that live data is unavailable here; do not retry |
-| `TOO_MANY_REQUESTS` | more than 6 requests in flight | queue and retry |
+| `ENTRY_NOT_ALLOWED` | the dataset or chart is not in the page's list of allowed objects | say which object is missing; do not retry |
+| `TOO_MANY_REQUESTS` | the host's queue is full, or `createState` is called too often | wait and retry; send fewer requests |
 | `INVALID_ARGS`, `VALIDATION_ERROR` | the arguments do not match the method's schema | fix the call |
 | `TIMEOUT` (client-side) | nothing answered: an older DataLens version, or a very slow query | offer a retry |
 | `NOT_FRAMED` (client-side) | the file was opened outside DataLens | show a placeholder or sample data |

@@ -2,7 +2,8 @@
 
 Exhaustive rules for a DataLens HTML page. The runtime = opaque-origin sandboxed iframe + injected
 CSP ([csp-and-sandbox.md](csp-and-sandbox.md)). Golden rule: **self-contained, network-less,
-state-in-memory.**
+state-in-memory.** The one sanctioned exception is the experimental host API
+([host-api.md](host-api.md)): data and saved state requested from the host over `postMessage`.
 
 ## Allowed external resources
 
@@ -34,7 +35,7 @@ Rewrite off-allowlist libraries through an allowed mirror:
 | Category | Blocked | Do instead |
 |----------|---------|------------|
 | Storage | `localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, Cache API | in-memory JS variables |
-| Network | `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `navigator.sendBeacon` to any host but Yandex Maps | **inline the data** into the page |
+| Network | `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `navigator.sendBeacon` to any host but Yandex Maps | **inline the data** into the page, or request it through the [host API](host-api.md) |
 | Workers | `new Worker`, `SharedWorker`, `navigator.serviceWorker` | do work on the main thread |
 | Popups/dialogs | `window.open`, `alert`, `confirm`, `prompt` | render UI in the page |
 | Navigation / links | navigating the parent (`parent.location`, `top.location`); ordinary `<a href>` link navigation | post `{code:'OPEN_URL', data:{url}}` on click (below) |
@@ -89,6 +90,12 @@ A presigned URL opened top-level within its TTL, or a local preview, has `parent
 nothing answers `OPEN_URL`, so ungated `preventDefault()` cancels navigation.
 Gating the listener leaves those links to the browser.
 
+**Request data or state** (experimental, per-page permissions, off in production). Post
+`{code:'API_REQUEST', data:{method, args}}` together with a `MessagePort`; the host answers
+`{result}` or `{error}` on that port. Use the client in
+[../assets/dl-host-api.js](../assets/dl-host-api.js); the methods and their arguments are in
+[host-api.md](host-api.md).
+
 ## Encoding & size (upload-time)
 
 - **UTF-8 only.** The server flags mojibake (high `U+FFFD` density) but never repairs it.
@@ -107,6 +114,8 @@ Gating the listener leaves those links to the browser.
 - blocked tags and `<a download>`
 - `link-navigation` (advisory note): `<a href>` links with no `OPEN_URL` handler detected
 - `unguarded-open-url` (advisory note): `OPEN_URL` interception with no recognizable frame check
+- `host-api` (advisory note): the page calls the host API, so it needs `allowedApiMethods` at
+  upload and a fallback where the API is off
 - CSS `url()` / `@import` and `srcset` hosts off the allowlist
 - missing early `<meta charset>`; high `U+FFFD` density
 - wrapping markdown code fences

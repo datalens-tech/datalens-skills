@@ -8,9 +8,9 @@ description: >-
   in DataLens misbehaves: images, fonts, scripts, or CDN libraries blocked or throwing
   Content-Security-Policy errors; fetch/XHR/localStorage failing; charts blank; a download or
   Export button doing nothing; an upload rejected as too large or the wrong encoding; or the
-  page needing to match the user's DataLens theme (light/dark) and language (ru/en); or
-  embedding a Yandex map. Also covers which CDNs and hosts are allowed and making the page
-  fully self-contained. Not for
+  page needing to match the user's DataLens theme (light/dark) and language (ru/en); embedding
+  a Yandex map; or loading live dataset or chart data and keeping a shareable state link. Also
+  covers which CDNs and hosts are allowed and making the page fully self-contained. Not for
   DataLens chart cells or HTML-markup table columns.
 license: Apache-2.0
 metadata:
@@ -45,7 +45,8 @@ CDNs, and most browser APIs are blocked.
 
 The net effect: **make the page fully self-contained.** Inline your own CSS/JS (the CSP allows
 `'unsafe-inline'`/`'unsafe-eval'`), pull libraries only from allowlisted CDNs, and never rely on
-network, storage, or the parent page.
+network or storage. The parent page is reachable only through the `postMessage` protocol below:
+file export, opening links, and, where enabled, the experimental host API for live data.
 
 ## Authoring rules
 
@@ -82,7 +83,7 @@ is inlined, not fetched.
   keep all state in memory.
 - **Network:** `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon` to anything
   except the Yandex Maps hosts — `connect-src` allows nothing else. **Inline your data into the
-  page** instead of fetching it.
+  page** instead of fetching it, or ask the host for it (see *Live data and state* below).
 - **Frames/objects/forms:** nested `<iframe>`, `<object>`, `<embed>`, `<form>` submission,
   `<base>`.
 - **Workers, popups, dialogs, downloads, camera/geolocation/fullscreen**, navigating the parent
@@ -124,6 +125,32 @@ if (window.parent !== window) {
   });
 }
 ```
+
+**Live data and state (experimental)** — a page can ask the host to query a dataset, read a
+saved chart's data, or save its state behind a shareable link. The host runs each call as the
+**viewer**, so the data respects their permissions, and only for the methods the page was
+granted at upload. Inline [assets/dl-host-api.js](assets/dl-host-api.js) and call it:
+
+```js
+const { schema, rows } = await DataLens.getDatasetData({
+  datasetId, columns: [regionGuid, salesGuid], // field GUIDs, looked up at generation time
+  filters: [{ guid: yearGuid, operation: 'eq', values: [2025] }], limit: 1000,
+});
+const { hash } = await DataLens.createState({ year: 2025 }); // puts ?state=<hash> in the address bar
+const saved = await DataLens.getState();                     // { hash, data } of the opened link
+```
+
+Use it only when the user wants live or per-viewer data, interactivity that re-queries, or a
+shareable view; a snapshot report still inlines its data. Three things to get right:
+
+- **It is off in production** and needs per-page permissions. Handle rejected calls
+  (`METHOD_NOT_ALLOWED`, `TIMEOUT`, `NOT_FRAMED`) with a visible message instead of a blank page.
+- **Tell the user which methods to allow** when uploading (`getDatasetData`, `getChartData`,
+  `getState`/`createState`), or pass them as `allowedApiMethods` when you publish.
+- **Look up field GUIDs before writing the page**; no host method lists a dataset's fields.
+
+Arguments, result shapes, errors and the raw message format are in
+[references/host-api.md](references/host-api.md) — read it before using any of these methods.
 
 **Encoding & size** (enforced at upload):
 
@@ -181,16 +208,22 @@ Serving is server-side; know the shape so you author correctly:
 **Accepted risks to design around** (details in
 [references/csp-and-sandbox.md](references/csp-and-sandbox.md)): a URL opened top-level (within its
 TTL) loses the iframe sandbox but keeps the injected CSP; a page can self-navigate via
-`<meta http-equiv="refresh">`; allowlisted CDNs are not SRI-pinned. Because the frame is
-same-origin-isolated and network-less, **do not put viewer data, parameters, or live LLM output
-that must stay private into the page** — it is a report, not a trusted app surface.
+`<meta http-equiv="refresh">`; allowlisted CDNs are not SRI-pinned. The frame is isolated from
+the host's origin, but the page's author controls everything in it, so **do not put viewer data,
+parameters, or live LLM output that must stay private into the file** — it is a report, not a
+trusted app surface. A page granted the host API does receive the viewer's data at runtime:
+keep that data on the page. Do not copy it into `OPEN_URL` links, export only what the user
+asked to download, and never navigate the frame elsewhere (the host blocks that for such pages).
 
 ## Common pitfalls → fixes
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | Library never loads / CSP error in console | script/style host off the allowlist | serve it from jsdelivr / cdnjs / tailwind / yastatic |
-| Data never appears | code calls `fetch`/XHR | inline the dataset into the page at generation time |
+| Data never appears | code calls `fetch`/XHR | inline the dataset into the page at generation time, or request it through the host API |
+| Host API call rejected with `METHOD_NOT_ALLOWED` | the page was uploaded without that method, or the installation has the host API off (production) | re-upload with the method allowed; show a fallback where it is off |
+| Host API call never resolves | the request carried no `MessagePort`, or the page was opened outside DataLens | use `assets/dl-host-api.js`, which times out and rejects |
+| Shared link opens the default view | state saved but never restored | call `getState()` at start-up and apply `data` before the first query |
 | "localStorage is not available" / throws | storage API in sandbox | keep state in memory |
 | Fonts don't render | font host off-allowlist | Google Fonts (`fonts.googleapis.com` CSS + `fonts.gstatic.com` files) or jsdelivr/cdnjs |
 | Image is blank | `http://` or off-allowlist host | use `yastatic.net`, `data:`, or `blob:` |

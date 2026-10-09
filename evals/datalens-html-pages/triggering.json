@@ -90,5 +90,21 @@
   {
     "query": "i'm building a code playground where users run their own untrusted html/js inside a sandboxed iframe. what sandbox attributes and CSP directives should i use so it can't touch cookies or the network?",
     "should_trigger": false
+  },
+  {
+    "query": "Сделай в DataLens HTML-страницу, где можно фильтровать продажи по региону, а данные каждый раз подтягиваются из датасета abc123 с учётом прав того, кто смотрит",
+    "should_trigger": true
+  },
+  {
+    "query": "My DataLens HTML page calls getDatasetData through postMessage and gets METHOD_NOT_ALLOWED back. What did I miss when uploading it?",
+    "should_trigger": true
+  },
+  {
+    "query": "Add a 'share this view' button to my DataLens HTML report so the link restores the selected filters",
+    "should_trigger": true
+  },
+  {
+    "query": "Write a Python script that pulls rows from DataLens dataset abc123 through the API and saves them to CSV",
+    "should_trigger": false
   }
 ]

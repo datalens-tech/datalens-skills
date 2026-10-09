@@ -30,6 +30,12 @@ as the `content` string and exactly one location form the installation supports:
 | Legacy folder | `key`: full path including the page's leaf name | `"key": "Users/alice/reports/sales-report"` |
 | Workbook | `workbookId` and `name` (the leaf name) | `"workbookId": "<id>", "name": "sales-report"` |
 
+A page that calls the host API ([host-api.md](host-api.md)) also needs `allowedApiMethods`: the
+methods it uses, out of `getDatasetData`, `getChartData`, `getState`, `createState`. Without it
+every call is rejected. On `updateHtmlPage`, omit the field to keep the current list. The field
+is honored only where the host API is enabled; elsewhere it is dropped, and the returned
+`entry.meta.allowedApiMethods` shows what was stored — report a mismatch to the user.
+
 Never combine `key` with `workbookId`/`name`. After a timeout or an uncertain result, look for the
 page at the destination before retrying, and verify what you find as below.
 

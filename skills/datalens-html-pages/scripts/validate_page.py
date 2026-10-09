@@ -346,6 +346,13 @@ def lint_bytes(raw):
         findings.append(Finding("note", "unguarded-open-url", 0,
                                 "OPEN_URL interception has no recognizable frame check; "
                                 "wrap it in `if (window.parent !== window)`"))
+
+    # The host API is experimental: per-page permissions, and off in production installations.
+    if "API_REQUEST" in text:
+        findings.append(Finding("note", "host-api", 0,
+                                "page calls the DataLens host API — upload it with the methods it "
+                                "uses in allowedApiMethods, and handle rejected calls where the "
+                                "API is off (see references/host-api.md)"))
     return findings
 
 
@@ -425,6 +432,7 @@ _BAD_CASES = [
     (b'<!DOCTYPE html><meta charset=utf-8><img src="https://core-renderer-tiles.maps.yandex.net/tiles?l=map">', None, "clean"),  # wildcard maps host
     (b'<!DOCTYPE html><meta charset=utf-8><link rel="preconnect" href="https://api-maps.yandex.ru">', None, "clean"),  # preconnect is a hint, not a CSP load
     (b'<!DOCTYPE html><meta charset=utf-8><img src="https://evil-maps.yandex.net/x.png">', "csp-host", "warning"),  # wildcard needs a real subdomain
+    (b'<!DOCTYPE html><meta charset=utf-8><script>parent.postMessage({code:"API_REQUEST",data:{method:"getState"}},"*",[new MessageChannel().port2])</script>', "host-api", "note"),  # advisory note: host API needs permissions
     (b'<!DOCTYPE html><meta charset=utf-8><script src="https://api-maps.yandex.ru/v3/?apikey=k"></script>', "maps-version", "warning"),  # v3 is unsupported
     (b'<!DOCTYPE html><meta charset=utf-8><script src="https://cdn.jsdelivr.net/npm/ymaps@2.1/x.js"></script>', "maps-mirror", "warning"),  # maps must not be mirrored
 ]

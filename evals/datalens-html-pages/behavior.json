@@ -121,6 +121,23 @@
         { "id": "ui-entry-link", "auto": false, "text": "Builds the permanent link from the UI endpoint and entryId, not the API endpoint, publishedId, objectId, or preview URL." },
         { "id": "verification-boundary", "auto": false, "text": "Distinguishes published-entry and stored-HTML checks from final UI route/browser rendering verification." }
       ]
+    },
+    {
+      "id": 10,
+      "name": "live-dataset-mini-app",
+      "prompt": "Build a DataLens HTML page for dataset ds123: sales by region as a table, with a year filter that re-queries the data each time, so every viewer sees only the rows they have access to, and a button that makes a link restoring the chosen year. Field GUIDs: region_a1, year_b2, sales_c3 (a measure).",
+      "expected_output": "One self-contained HTML document that asks the host for data through the host API client (API_REQUEST with a MessagePort), restores and saves state, shows loading and error states, and tells the user which methods to allow at upload.",
+      "files": [],
+      "assertions": [
+        { "id": "self-contained", "auto": true, "text": "Output is one self-contained HTML document (<!DOCTYPE html>/<html> with <meta charset> in the first 1024 bytes)." },
+        { "id": "passes-linter", "auto": true, "text": "Passes validate_page.py --strict — the host-api note is advisory and does not fail it." },
+        { "id": "host-api-not-fetch", "auto": false, "text": "Loads the data with getDatasetData over parent.postMessage (the bundled client inlined, or an equivalent that sends a MessagePort with each request and times out); no fetch/XHR, and the rows are not inlined as a snapshot." },
+        { "id": "guids-not-titles", "auto": false, "text": "Passes the given field GUIDs in columns/filters/sort, with sort fields also present in columns." },
+        { "id": "state-roundtrip", "auto": false, "text": "Calls getState at start-up and applies the restored year before the first data request; calls createState on the share action with only the selection, not query results." },
+        { "id": "degrades", "auto": false, "text": "Shows a visible message when a call is rejected (METHOD_NOT_ALLOWED, TIMEOUT, NOT_FRAMED, access errors) instead of a blank page." },
+        { "id": "names-permissions", "auto": false, "text": "Tells the user the page needs getDatasetData, getState and createState allowed at upload (or passes them as allowedApiMethods when publishing), and that the host API is experimental and off in production." },
+        { "id": "no-exfiltration", "auto": false, "text": "Does not put received rows into OPEN_URL links, and does not navigate the frame." }
+      ]
     }
   ]
 }

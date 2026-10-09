@@ -111,3 +111,35 @@ parent.postMessage({ code: 'OPEN_URL', data: { url } }, '*');
 
 Use the framed-only delegated listener in
 [authoring-constraints.md](authoring-constraints.md), which leaves in-page anchors alone.
+
+**Call the host API** (experimental) — the only way a page gets live data. The page posts a
+request, the host checks the method against the page's own permission list, runs it through the
+DataLens UI gateway as the viewer, and answers on the `MessagePort` sent with the request:
+
+```js
+const { port1, port2 } = new MessageChannel();
+port1.onmessage = ({ data }) => { /* { result } or { error } */ };
+parent.postMessage({ code: 'API_REQUEST', data: { method, args } }, '*', [port2]);
+```
+
+The CSP is untouched: `connect-src` still blocks the page's own requests, and the host exposes
+four methods, not the DataLens API. See [host-api.md](host-api.md).
+
+### What the host API changes in the threat model
+
+Without it a page holds only what its author put in the file. With it a page holds the
+**viewer's** data, and the author is not necessarily the viewer. The isolation above stops the
+page from reaching the host's cookies or calling arbitrary endpoints; it does not by itself stop
+a page from moving data it legitimately received to somewhere else. The channels to keep in mind:
+
+- `OPEN_URL` opens an address the page chose. Hosts the installation trusts open at once;
+  others ask the user first, showing the URL.
+- `EXPORT` saves a file on the user's device.
+- A frame can navigate itself (`location`, `<meta http-equiv="refresh">`), and nothing in the
+  page's own CSP prevents that. For a page granted the host API the host therefore wraps the
+  frame in a document whose `frame-src` allows only the page's own storage address: a
+  navigation anywhere else is blocked and leaves the frame blank.
+- Requests to allowlisted hosts (CDNs, Yandex Maps) carry whatever URL the page builds.
+
+This is why the host API is behind a feature flag and per-page permissions while it is reviewed,
+and why a generated page must never route received data into any of these.

@@ -115,6 +115,16 @@ graded in that repository. The behaviour worth testing for `datalens-sdk` is tha
 actually resolves and reads the package instructions instead of improvising an API — worth adding
 once the package ships them.
 
+## `datalens-onprem-install/`
+
+`triggering.json` has 22 examples for commercial On-premises administration and
+nearby tasks owned by other skills, including the Open Source edition.
+`behavior.json` has 11 scenarios for existing installs, API and login changes,
+TLS, backups, updates, shared clusters, custom releases, and external Secrets.
+These are specifications for human or model evaluation, not completed test runs.
+Use fixtures or a disposable environment; do not change a live installation.
+The skill itself remains a single `SKILL.md`; these eval files are not loaded by it.
+
 ## What runs in CI
 
 Only the deterministic checks (see [`../.github/workflows/validate.yml`](../.github/workflows/validate.yml));

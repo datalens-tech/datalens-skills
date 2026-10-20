@@ -1,0 +1,251 @@
+{
+  "skill_name": "datalens-onprem-install",
+  "kind": "behavior",
+  "note": "Review scenarios for human or model evaluation, outside the installed skill. Not executed by scripts/validate_skills.mjs. Use supplied fixtures or a disposable test environment; do not mutate a live installation. Evaluation outcomes are recorded separately.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "api-only",
+      "prompt": "DataLens On-premises is already running. Enable Public API; do not reinstall it. Current custom values have public_api disabled.",
+      "expected_output": "Goes directly to API/configuration work without sizing or installing K3s. Reads current documentation/help and preserves the existing complete values; does not assume a CLI flag overrides the file. Checks an OpenAPI document and a valid authenticated read-only response, not HTTP 200 alone.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "api-only-1",
+          "auto": false,
+          "text": "Goes directly to API/configuration work without sizing or installing K3s."
+        },
+        {
+          "id": "api-only-2",
+          "auto": false,
+          "text": "Reads current documentation/help and preserves the existing complete values; does not assume a CLI flag overrides the file."
+        },
+        {
+          "id": "api-only-3",
+          "auto": false,
+          "text": "Checks an OpenAPI document and a valid authenticated read-only response, not HTTP 200 alone."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "failed-install",
+      "prompt": "Installation failed before a debug values file appeared. Continue on the same machine; several DataLens pods and a failed Helm release exist.",
+      "expected_output": "Inspects cluster, Helm release, pods and events before choosing recovery. Does not infer a fresh installation from a missing debug file or silently reinstall K3s.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "failed-install-1",
+          "auto": false,
+          "text": "Inspects cluster, Helm release, pods and events before choosing recovery."
+        },
+        {
+          "id": "failed-install-2",
+          "auto": false,
+          "text": "Does not infer a fresh installation from a missing debug file or silently reinstall K3s."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "timeout",
+      "prompt": "A custom-values deployment timed out with context deadline exceeded. Pod events include FailedScheduling: insufficient memory.",
+      "expected_output": "Uses the scheduling evidence and checks resources before proposing a fix. Does not attribute the timeout to missing feature dependencies without evidence.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "timeout-1",
+          "auto": false,
+          "text": "Uses the scheduling evidence and checks resources before proposing a fix."
+        },
+        {
+          "id": "timeout-2",
+          "auto": false,
+          "text": "Does not attribute the timeout to missing feature dependencies without evidence."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "oidc-switch",
+      "prompt": "Add OIDC to the current instance and make login external-only. Keep all existing features. No OIDC login has been tested yet.",
+      "expected_output": "Applies the provider configuration with local login still available. Requires a successful provider login and role/admin-access check before disabling local login. Shows a command applying the complete updated values and verifies login afterward.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "oidc-switch-1",
+          "auto": false,
+          "text": "Applies the provider configuration with local login still available."
+        },
+        {
+          "id": "oidc-switch-2",
+          "auto": false,
+          "text": "Requires a successful provider login and role/admin-access check before disabling local login."
+        },
+        {
+          "id": "oidc-switch-3",
+          "auto": false,
+          "text": "Shows a command applying the complete updated values and verifies login afterward."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "backup-restore",
+      "prompt": "We have a PostgreSQL dump. Restore it on a new DataLens host and roll the whole failed upgrade back with that command.",
+      "expected_output": "Distinguishes database restoration from application/configuration rollback. Preserves CONTROL_API_CRYPTO_KEY separately and identifies other stores/configuration outside the PostgreSQL dump. Checks distribution restore syntax, compatibility and data replacement before executing.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "backup-restore-1",
+          "auto": false,
+          "text": "Distinguishes database restoration from application/configuration rollback."
+        },
+        {
+          "id": "backup-restore-2",
+          "auto": false,
+          "text": "Preserves CONTROL_API_CRYPTO_KEY separately and identifies other stores/configuration outside the PostgreSQL dump."
+        },
+        {
+          "id": "backup-restore-3",
+          "auto": false,
+          "text": "Checks distribution restore syntax, compatibility and data replacement before executing."
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "self-signed-api",
+      "prompt": "The token exchange and MCP client each report fetch failed against our self-signed DataLens instance. Help connect both.",
+      "expected_output": "Checks the underlying error and offers CA trust first. If a temporary TLS bypass is explicitly chosen, scopes NODE_TLS_REJECT_UNAUTHORIZED=0 to both relevant Node processes; does not invent DL_INSECURE. Does not reference a nonexistent bundled token script or expose a private key.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "self-signed-api-1",
+          "auto": false,
+          "text": "Checks the underlying error and offers CA trust first."
+        },
+        {
+          "id": "self-signed-api-2",
+          "auto": false,
+          "text": "If a temporary TLS bypass is explicitly chosen, scopes NODE_TLS_REJECT_UNAUTHORIZED=0 to both relevant Node processes; does not invent DL_INSECURE."
+        },
+        {
+          "id": "self-signed-api-3",
+          "auto": false,
+          "text": "Does not reference a nonexistent bundled token script or expose a private key."
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "release-differences",
+      "prompt": "Update DataLens. Online help mentions a new merge option, but local init.sh --help lacks it. The target release notes describe automatic migrations.",
+      "expected_output": "Distinguishes running, unpacked and target releases and checks local capabilities. Reads release notes for the actual path without a hardcoded release matrix; distinguishes automatic and manual migrations. Does not use the unsupported merge option or repeat automated migrations blindly.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "release-differences-1",
+          "auto": false,
+          "text": "Distinguishes running, unpacked and target releases and checks local capabilities."
+        },
+        {
+          "id": "release-differences-2",
+          "auto": false,
+          "text": "Reads release notes for the actual path without a hardcoded release matrix; distinguishes automatic and manual migrations."
+        },
+        {
+          "id": "release-differences-3",
+          "auto": false,
+          "text": "Does not use the unsupported merge option or repeat automated migrations blindly."
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "shared-cluster",
+      "prompt": "Remove only DataLens from this K3s cluster; it also runs other applications.",
+      "expected_output": "Does not run k3s-uninstall.sh or remove unrelated workloads. Reviews release/storage scope and backup handling for the shared cluster.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "shared-cluster-1",
+          "auto": false,
+          "text": "Does not run k3s-uninstall.sh or remove unrelated workloads."
+        },
+        {
+          "id": "shared-cluster-2",
+          "auto": false,
+          "text": "Reviews release/storage scope and backup handling for the shared cluster."
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "custom-release",
+      "prompt": "Enable Public API on our existing commercial DataLens distribution. The current release is bi-prod in analytics, not the default release. /etc/datalens/values.yaml contains the full current configuration. Local help supports --values, --release-name and --release-namespace. Show the proposed command; do not execute changes.",
+      "expected_output": "Preserves the inspected cluster context, release bi-prod and namespace analytics in the proposed command. Checks the actual distribution help and prepares the full configuration without resetting unrelated settings. Does not deploy or create a new cluster.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "custom-release-1",
+          "auto": false,
+          "text": "Preserves the inspected cluster context, release bi-prod and namespace analytics in the proposed command."
+        },
+        {
+          "id": "custom-release-2",
+          "auto": false,
+          "text": "Checks the actual distribution help and prepares the full configuration without resetting unrelated settings."
+        },
+        {
+          "id": "custom-release-3",
+          "auto": false,
+          "text": "Does not deploy or create a new cluster."
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "external-secret-login",
+      "prompt": "Our commercial DataLens instance uses secrets.ref: corp-datalens. OIDC login works for an ordinary user, but we have not checked an administrator. Make login external-only. Provider changes are currently written only to secrets.AUTH_PROVIDERS_CONFIG in our values file. Prepare a plan, without deployment.",
+      "expected_output": "Recognizes that inline secret values may be ignored with secrets.ref and checks the referenced Kubernetes Secret according to current docs. Checks a real provider login with administrator access before disabling local login. Preserves a recovery path and applies configuration to the existing release only after the required checks and authorization.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "external-secret-login-1",
+          "auto": false,
+          "text": "Recognizes that inline secret values may be ignored with secrets.ref and checks the referenced Kubernetes Secret according to current docs."
+        },
+        {
+          "id": "external-secret-login-2",
+          "auto": false,
+          "text": "Checks a real provider login with administrator access before disabling local login."
+        },
+        {
+          "id": "external-secret-login-3",
+          "auto": false,
+          "text": "Preserves a recovery path and applies configuration to the existing release only after the required checks and authorization."
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "open-source-scope",
+      "prompt": "We cloned datalens-tech/datalens from GitHub. It has init.sh and the README mentions Helm. Help us update this installation using the commercial on-premises distribution procedure.",
+      "expected_output": "Identifies the Open Source edition from the supplied source and does not infer the commercial edition from init.sh or Helm. Routes to the Open Source repository documentation instead of applying the commercial distribution update procedure.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "open-source-scope-1",
+          "auto": false,
+          "text": "Identifies the Open Source edition from the supplied source and does not infer the commercial edition from init.sh or Helm."
+        },
+        {
+          "id": "open-source-scope-2",
+          "auto": false,
+          "text": "Routes to the Open Source repository documentation instead of applying the commercial distribution update procedure."
+        }
+      ]
+    }
+  ]
+}

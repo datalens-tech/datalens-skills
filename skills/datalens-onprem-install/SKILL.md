@@ -1,175 +1,264 @@
 ---
 name: datalens-onprem-install
 description: >-
-  Step-by-step installation of DataLens On-premises on a single-node K3s with embedded
-  PostgreSQL/ClickHouse/Redis/MinIO: sizing by user count, delivering the distributive, choosing
-  the feature set, running init.sh, retrieving the admin password, enabling the Public API and a
-  service account; plus separate modes to update an instance (init.sh --update) and to uninstall
-  it (k3s-uninstall). Use it when asked to install or deploy DataLens on-premises (установить или
-  развернуть DataLens on-premise / онпрем), resume an interrupted installation, size a machine for
-  an instance, update or remove an existing instance, enable the Public API, or configure external
-  login providers (LDAP/OIDC) on-premise. NOT for Yandex Cloud or the internal Yandex Team
-  installation, and not for building charts or dashboards (that is `datalens-sdk`).
-license: Apache-2.0
-metadata:
-  domain: datalens
+  Install, configure, troubleshoot, update, or remove the commercial DataLens
+  On-premises distribution using current docs. Use for single-node K3s setup, sizing,
+  interrupted installs, feature changes, Public API, service accounts, MCP,
+  LDAP/OIDC, and backup or restore. Not for Yandex Cloud, Yandex Team, the
+  Open Source edition, or building charts and dashboards.
 ---
 
-# DataLens On-premises installation
+# DataLens On-premises
 
-A conversational skill for a DevOps engineer. Scope: a single-node K3s with embedded
-PostgreSQL/ClickHouse/Redis/MinIO (`init.sh --k3s-install`).
+Start with the [product landing page](https://datalens.ru/on-premises/) for a
+basic overview of DataLens On-premises and links to product information.
 
-## Principles
+Use `datalens` for shared concepts and interface choice. This file owns
+administration of the commercial On-premises distribution. Use `datalens-sdk`
+for work on analytical objects and `datalens-html-pages` for HTML reports.
 
-- Every stage ends with a checkpoint: a short summary of what was done plus the engineer's
-  confirmation. You can stop at any point — no state is stored anywhere; when you return, the
-  skill re-detects where you left off (see "Re-detection").
-- Read a reference only at its stage: `references/sizing.md` (stage 1), `references/flags.md`
-  (stage 4), `references/api-setup.md` (stage 7), `references/auth-providers.md` (stage 8),
-  `references/update.md` (update mode). Do not read them ahead of time.
-- Never write secrets (the admin password, tokens, `.pem` keys) into project files, and never
-  commit them.
+## Choose the task
 
-## Command-execution mode
+Confirm the edition and goal. If the edition is unclear, check the package docs
+or ask where it came from. For the Open Source edition, use its
+[repository docs](https://github.com/datalens-tech/datalens). The presence of
+`init.sh`, Helm, or a local host alone does not identify the edition.
 
-Chosen at stage 2, applies to stages 3–7:
+Check whether an instance already exists and go straight to the needed section.
+API or login changes on a running instance do not need sizing
+or a new install. Use the install flow for single-node K3s; for an existing
+Kubernetes cluster or external services, follow the matching docs and keep
+that setup.
 
-- **ssh mode** — the agent runs the commands on the target machine itself via
-  `ssh <host> '<cmd>'`. Before starting, verify non-interactive access:
-  `ssh -o BatchMode=yes <host> 'echo ok'`.
-- **instructions mode** — the agent prints commands in blocks, the engineer runs them and returns
-  the output. Wait for the output after each block; do not push ahead blind.
+## Read current sources
 
-If installing onto the current machine — just use Bash.
+Read only what the task needs, whenever it is needed, including before install.
 
-## Re-detection (always the first step when resuming)
+- [Deployment guide](https://datalens.ru/on-premises/docs/ru/concepts/create-instance.html): requirements, download, install, update, flags, and values.
+- [Configuration recipes](https://datalens.ru/on-premises/docs/ru/cookbook/configuration.html): features and their dependencies.
+- [Logs and diagnostics](https://datalens.ru/on-premises/docs/ru/cookbook/logging.html): pod logs, cluster events, and `--get-debug-info`.
+- [Public API](https://datalens.ru/on-premises/docs/ru/operations/api-start.html) and [MCP README](https://github.com/datalens-tech/datalens-mcp): service accounts, tokens, and client setup.
+- [LDAP/OIDC](https://datalens.ru/on-premises/docs/ru/concepts/auth-providers/): provider fields and examples.
+- [Backup and restore](https://datalens.ru/on-premises/docs/ru/cookbook/migrations.html) and [secrets](https://datalens.ru/on-premises/docs/ru/concepts/secrets-instance/): data recovery and keys.
+- [Service version](https://datalens.ru/on-premises/docs/ru/concepts/what-version.html) and [release notes](https://datalens.ru/on-premises/docs/ru/changelog.html): running version and changes along the update path.
 
-Determine the state and jump to the first unfinished stage:
+If public docs are unreachable, use the local documentation:
 
-| Signal on the target machine | Go to |
-|---|---|
-| machine not chosen yet / new conversation | stage 1 |
-| no unpacked distributive (`init.sh`, `helm/`) | stage 3 |
-| distributive present, no `.values.debug.yaml` next to it | stage 4 (install never ran) |
-| `.values.debug.yaml` present, pods not Running (`sudo k3s kubectl get pods -A`) | stage 5 (unfinished/broken) |
-| pods Running, UI responds | stage 6 or 7 |
-| instance running, engineer asks to update | update mode (`references/update.md`) |
-| engineer asks to remove the instance | uninstall mode (see below) |
+- Find and unpack the Markdown docs archive inside the selected distribution.
+  Inspect the package for its actual name and layout; search the Markdown files
+  for the needed topic.
+- Read the separate `readme.md` for deployment instructions and documentation
+  links. Check the actual file name and letter case in the package.
+- After deployment, open `<domain>/docs` on the target instance, using its
+  configured scheme and domain. Follow its links or search for the needed topic.
 
-`.values.debug.yaml` is the source of truth for the previous run's parameters (a hidden dot-file).
-It normally holds no secrets, but an install run with `--yandex-map-token` or `--ai-api-token` can
-land those values in it — check before quoting the file wholesale.
+Use docs that match the version being installed or managed. Without access,
+ask the user for the relevant local files or excerpts, not only a public URL.
 
-## Stages
+Run `./init.sh --help` from the selected distribution directory before building
+commands. Check its `help/` examples and scripts when details are unclear.
+Verify flags, file names, defaults, and merge rules against that distribution;
+public docs may describe a newer release. If sources still conflict or neither
+public nor local sources cover the task, explain the gap and request the
+relevant help output or docs. Do not guess.
 
-### 1. Sizing
+## Work with the user
 
-Ask for the approximate number of users and the scenario: basic features only, or all of them.
-Read `references/sizing.md` and pick a machine configuration. Always offer the option to skip the
-calculation: the pilot config **16 vCPU / 32 GiB RAM / 100 GiB SSD** is enough for a pilot with
-all the main features, and can be scaled up later. Checkpoint: the engineer confirms a machine with
-those resources exists or will.
+- Reuse known inputs. Ask only for missing details needed for the task.
+- Use local commands or SSH on the agreed target. Without access, give short
+  command blocks and wait for the output before dependent steps.
+- Give a short status after checks. Before deployment or a critical change,
+  show the exact target, command, effect, and how to check the result. Get approval
+  unless that specific action is already approved. Use `--yes` only for an approved
+  non-interactive run, after checking that the distribution supports it.
+- Keep passwords, tokens, private keys, provider files, and backup keys out of
+  chat, logs, and Git. Store needed secret files outside the repo with mode 600.
+  Treat all values and debug files as sensitive; tokens may be outside `secrets`.
+- Use absolute paths for input files. Run `init.sh` from the distribution root.
+  Keep long operations running and report progress; do not restart blindly.
 
-### 2. Target machine
+## Inspect the target
 
-Local or remote? For a remote one, ask for host/user and the execution mode (ssh or instructions),
-and verify access. On the machine, check:
+Find the distribution path, installed version, cluster context, Helm release,
+and namespace. Check access before treating a missing result as an empty system.
+Use the target's Kubernetes and Helm tools; for local K3s, use
+`sudo k3s kubectl` and a Helm client with the same kubeconfig.
 
-- OS: `cat /etc/os-release` — guaranteed to work on Debian-based (Ubuntu 20.04–24.04,
-  Debian 10–12)
-- resources: `nproc`, `free -g`, `df -h /` — compare against the stage-1 recommendation
-- presence of `curl`, `tar`
+Check nodes, pods, events, and Helm releases, including failed and pending ones:
+`kubectl get nodes`, `kubectl get pods -A`, `kubectl get events -A`, and
+`helm list -A --all`. Then inspect `helm status` and `helm history` for the
+selected release and namespace. Check its current values and the UI when present.
 
-Fewer resources than recommended — warn, but do not block.
+A debug file such as `.values.debug.yaml` or `values.debug.yaml` is only a clue
+from a past run. Its absence does not mean installation never started; its
+presence does not prove the current release is healthy. Diagnose a failed or
+pending deployment before continuing. Never replace an existing cluster just
+because a file is missing.
 
-### 3. Distributive
+## Size the machine
 
-Ask what the engineer has: a path to the tar file, or a curl link (obtained in the DataLens
-cabinet; requires a contract and the `datalens.admin` role).
+Read the current [hardware requirements](https://datalens.ru/on-premises/docs/ru/concepts/create-instance.html#hardware).
+Ask for the approximate user count, concurrent use, workload, needed features,
+and pilot or production use. Check OS, CPU, RAM, disk, network, domain, and TLS.
+For production, review the documented external PostgreSQL and availability
+requirements.
 
-- link: `curl -L "<url>" -o datalens-enterprise.tar`
-- local file + remote machine: `scp <file> <host>:~/`
+Use these single-node presets from the spec calculator, "Presets" tab
+(snapshot 2026-08). Basic means dashboard viewing and basic features;
+All features includes export, file connectors, Editor, and other features.
+Round the user count up to the next table row. These are minimum machine
+presets, not a capacity guarantee; check current requirements and validate
+the planned workload with load testing.
 
-Unpack: `mkdir -p datalens-enterprise && tar -xvf datalens-enterprise.tar --directory ./datalens-enterprise`
-Check: `init.sh` and `helm/` appeared in the folder.
+| Users | Scenario | vCPU | RAM, GiB | SSD, GiB |
+|---:|---|---:|---:|---:|
+| 100 | Basic | 16 | 32 | 100 |
+| 100 | All features | 32 | 64 | 100 |
+| 250 | Basic | 32 | 64 | 100 |
+| 250 | All features | 64 | 128 | 100 |
+| 500 | Basic | 64 | 128 | 100 |
+| 500 | All features | 96 | 192 | 100 |
+| 1000 | Basic | 96 | 192 | 100 |
+| 1000 | All features | 192 | 384 | 100 |
+| 5000 | Basic | 448 | 896 | 100 |
+| 5000 | All features | 640 | 1280 | 100 |
+| 10000 | Basic | 768 | 1536 | 100 |
+| 10000 | All features | 1216 | 2432 | 100 |
 
-### 4. Install composition
+Offer a quick pilot option: **16 vCPU / 32 GiB RAM / 100 GiB SSD** for the
+main features, with room to scale up later.
 
-Read `references/flags.md`. Offer three options: **full**, **basic**, **custom** (per the flag
-table). If the stage-1 scenario was "all features" — default to full; "basic" — to basic. Collect
-the inputs: the domain for `--ingress-domain` (no domain — default `datalens.enterprise` + a hosts
-entry), TLS (self-signed `--ingress-tls-gen` or your own certificates), and, for the full option,
-whether there is a Yandex Maps token (without a token `--yandex-map` runs on the free tier ~1000
-requests/day but needs network access to the Maps API; in an air-gapped environment drop the flag).
-If the engineer wants login through an external IdP (LDAP / OIDC) from the start, this is also set
-here via `--auth-providers-config` — see stage 8 and `references/auth-providers.md` (it can equally
-be added later to a running instance). Checkpoint: show the assembled `./init.sh ...` command in
-full and get confirmation.
+- Keep at least 16 vCPU and 32 GiB RAM, even for small teams.
+- 100 GiB SSD is a minimum for the system and embedded databases. Allow more
+  space for file connectors and usage tracking as their data grows.
+- All features assumes an async load factor of ×1. For heavy background work,
+  such as mass scheduled exports, budget ×2–×4 CPU/RAM; ask the DataLens team
+  for a detailed calculation with the extended calculator.
+- For 5,000+ users, review whether one machine is suitable. Above 10,000 users,
+  ask the DataLens team for individual sizing and a multi-node setup.
 
-### 5. Install
+## Install
 
-Run the stage-4 command from the distributive folder. **For a non-interactive run (background, ssh
-without a TTY) you must add `--yes`** — otherwise `init.sh` reaches the prompt
-`Check diff for new helm release, do you want to continue [Y/n]?` and hangs forever, waiting for
-input on a disconnected stdin (you lose the whole image-import cycle on the restart). This takes a
-while (tens of minutes): run it in the background / with a large timeout and show progress. When
-done:
+Get the archive path or download link from the user. Follow the download and
+unpack instructions; use an absolute destination and check for `init.sh` and
+`helm/`. Build the command from this distribution's help and the agreed
+features. Prepare LDAP/OIDC now if needed. Use `--k3s-install` only when a new
+local cluster is required. Preserve existing certificates and keys on re-runs.
 
-- `sudo k3s kubectl get pods -A` — all pods Running/Completed
-- UI check. If the domain does not resolve on the machine itself (no hosts entry), resolve it
-  manually: `curl -sk --resolve <domain>:443:127.0.0.1 https://<domain>/` — the UI responds
+Run the approved command and verify the result below. For a new instance,
+use the documented admin-password command and have the user test login and
+store the password securely. Set up API or external login only when requested.
 
-If the install fails — show the tail of the output, offer diagnostics (`./init.sh --stern` for
-logs), and do not silently restart. A `context deadline exceeded` failure on a custom `values.yaml`
-deploy usually means an enabled feature is missing its `infra.*` dependency — see "Deploying via a
-custom values.yaml" in `references/flags.md`.
+## Apply configuration
 
-### 6. Admin password
+Read the current release settings before adding a feature. Preserve its domain,
+TLS, storage, secrets, and other enabled features. Do not assume old flags are
+kept on a re-run. Check how this version handles `--values` and `--values-merge`;
+neither a partial file nor a few new flags should silently reset other settings.
+Check feature dependencies in the current recipes and chart.
 
-`./init.sh --get-admin-password` — show it to the engineer and advise storing it in a password
-manager (if lost, it can be reset and regenerated). Login: `https://<domain>`, user `admin`.
-Checkpoint: the engineer confirms they logged in.
+Prepare a custom values file that preserves the required existing settings.
+Do not edit `helm/values.yaml`. Set `DL_DIST` and `DL_VALUES` to absolute paths,
+and `DL_RELEASE` and `DL_NAMESPACE` to the inspected release. After reviewing
+the config change, checking these flags, and getting approval, apply it:
 
-### 7. Public API and service account (optional)
+```bash
+cd "$DL_DIST"
+./init.sh --release-name "$DL_RELEASE" --release-namespace "$DL_NAMESPACE" \
+  --values "$DL_VALUES" --yes
+```
 
-Offer to set up programmatic API access. If agreed — read `references/api-setup.md` and follow it:
-enabling `--public-api` (if not already on), the service account (manual steps in the UI), minting
-an accessToken with `scripts/onprem_mint_token.mjs`, verification, and optionally wiring up the MCP
-server.
+Use the same command to apply later edits to that file. Keep the current
+cluster context. Do not add cluster-install or key/certificate-generation flags
+for a feature change. Reload images only when the selected change needs it.
 
-### 8. External authentication providers — LDAP / OIDC (optional)
+## Public API and MCP
 
-If the engineer wants login through an external IdP (LDAP or OpenID Connect; SAML is not
-supported) — read `references/auth-providers.md` and follow it: fill a JSON provider config (a
-template ships at `./help/auth-provider-config.example.json`), pass it via
-`--auth-providers-config <path>`, optionally restrict login to external IdP only
-(`features.auth.local: false`), and verify the provider appears on the login page. This can be set
-at first install (stage 4) or added later to a running instance via a re-run (see "Speeding up a
-redeploy" in `references/flags.md`). The config holds bind credentials / client secrets — treat it
-as a secret.
+Enable the API with the supported flag or values setting using the configuration
+flow above. Get the UI and API URLs from the user or verified deployment config;
+do not infer one from the other. Read the instance's Swagger and OpenAPI schema.
+Check that the schema response is valid OpenAPI JSON, not HTML returned with HTTP 200.
 
-## Mode: update (only on an explicit request)
+Follow the current API docs to create a service account and key, grant the
+needed object access, sign its JWT, and exchange it for an access token.
+This skill has no token script. If code is needed, adapt the current documented
+example, use absolute paths for the temporary script and key, and state which
+machine can reach the API. Check the response body and use a valid read-only
+API call to verify access; a validation error is not a successful test.
 
-If the instance is already installed and the engineer asks to update it — read
-`references/update.md` and follow it: determine the installed and the latest versions (changelog or
-manually), review the breaking changes along the upgrade path, offer a `--dump-postgres` backup,
-unpack the new archive over the old one, `./init.sh --update`, verify. Do not offer updates
-proactively.
+For self-signed TLS, prefer a trusted CA; for Node, use `NODE_EXTRA_CA_CERTS`
+with an absolute CA path. If the user approves a temporary verification bypass,
+use only `NODE_TLS_REJECT_UNAUTHORIZED=0`, scoped to the individual process.
+Apply the chosen TLS setting to both token exchange and MCP: an MCP setting
+does not affect an earlier token command. Do not add a custom TLS variable.
+For `fetch failed`, inspect the underlying cause without printing secrets.
 
-## Mode: uninstall (only on an explicit request)
+If MCP is requested, use its current README and the installed client's setup
+instructions. Set the instance URL, schema URL, API version, and Bearer auth
+from the verified API. Check the connection and a read-only tool call. Plan
+for token expiry and renewal; do not hard-code a token lifetime in this skill.
 
-A destructive operation: the cluster and all instance data are deleted. Before running it,
-explicitly confirm with the engineer that the instance and its data are no longer needed, and offer
-a backup: `./init.sh --dump-postgres` (copy the dump off the machine immediately — it disappears
-together with the folder).
+## LDAP/OIDC
 
-1. `sudo /usr/local/bin/k3s-uninstall.sh` — tears down K3s with all pods and data (the script
-   appears once K3s is installed).
-2. Remove the distributive folder: `rm -rf <path>/datalens-enterprise` (and the tar archive if no
-   longer needed).
+Read the provider docs and the distribution's provider-config example. Check
+provider reachability, the public DataLens URL, callback URL, and role mapping.
+Use the documented provider flag or `secrets.AUTH_PROVIDERS_CONFIG`. If the
+release uses `secrets.ref`, follow the external-secret instructions; inline
+secret values may be ignored.
 
-## Docs
+Keep `features.auth.local: true` for the first change. Apply the provider config
+and login settings with the configuration command above, preserving the rest
+of the release. Test a real LDAP/OIDC login in a fresh browser session and check
+the expected roles, including administrator access. A visible provider button
+alone is not enough.
 
-- Installation and all parameters: https://datalens.ru/on-premises/docs/en/concepts/create-instance.html
-- Feature flags: https://datalens.ru/on-premises/docs/en/concepts/create-instance.html#functionality
+Only after that test, if external-only login is requested, save a recovery path,
+set `features.auth.local: false` in the same values file, and apply it with the
+same command after approval. Re-test login. Use `skip_local` and
+`force_redirect_open_id` only when the current docs and provider setup allow it.
+
+## Verify and troubleshoot
+
+Check Helm status, workload readiness, completed jobs, UI response, login, and
+the requested feature. Running pods alone do not prove success.
+
+Use `./init.sh --get-debug-info` from the distribution root to collect a
+diagnostic archive. First check support and target options in this version's
+help; use the intended cluster, release, and namespace. Inspect host CPU, RAM,
+and disk, Helm values, pod status, events, and recent pod logs. Contents may
+vary by version; collect missing details separately. Without access, give the
+command to the user. Keep the archive private and share only redacted excerpts.
+
+For `context deadline exceeded`, inspect pods and events first, then logs.
+Too little CPU or memory can cause this timeout. Also check slow startup,
+image pulls, storage, networking, and feature dependencies. Share redacted
+evidence and the next action; do not silently rerun the deployment.
+
+## Back up, update, or remove
+
+Before update, restore, or removal, agree on backup scope. A PostgreSQL dump
+covers the DataLens metadata stored there, such as users, permissions, and
+objects. It does not include Kubernetes Secrets, S3 objects, ClickHouse data,
+or external source databases. Check the dump command's exact database scope
+in this distribution. Save `CONTROL_API_CRYPTO_KEY` separately and securely:
+it is needed to read saved connection secrets. Preserve other required secrets,
+configuration, and stores using the current recovery docs. Keep backups outside
+the machine or directories that will be removed, and verify they can be read.
+
+For an update, check the running version from the live instance and identify the
+target version. An unpacked archive does not prove what is running. Read release
+notes for the whole update path. Check which migrations the target script runs
+automatically; do not repeat them manually or assume every migration is automatic.
+Follow that version's update procedure, with explicit unpack and working
+directories, then verify the running version and affected features. Use `--update`
+only when supported for this path. `--restore-postgres` restores database data; it does
+not roll back application images, Helm changes, or an update. Treat database
+restore and application rollback as separate recovery actions. Check restore
+compatibility and syntax in the selected distribution. Confirm any restore that
+clears data.
+
+For removal, confirm the exact instance, affected data, and backup decision.
+Use `k3s-uninstall.sh` only for a dedicated K3s cluster whose removal is approved;
+it removes the cluster and its local data, including other workloads. For a
+shared cluster, follow the release-specific removal procedure. Confirm exact
+paths before removing distribution files; do not assume external data is deleted.

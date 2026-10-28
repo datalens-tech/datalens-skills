@@ -9,12 +9,6 @@ MOCK_CONFIG="${0}.config"
 if [ "${1:-}" = "-c" ]; then
     MOCK_CODE="${2:-}"
     case "$MOCK_CODE" in
-        *'start_new_session=True'*)
-            shift 2
-            exec "$MOCK_REAL_PYTHON" -c "$MOCK_CODE" "$@"
-            ;;
-    esac
-    case "$MOCK_CODE" in
         *'import pip'*'pip._vendor.packaging.specifiers'*)
             case "$MOCK_PROBE_RUNTIME" in
                 available) exit 0 ;;
@@ -175,6 +169,13 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
                     ;;
                 hang)
                     while :; do sleep 1; done
+                    ;;
+                hang_tree)
+                    # Both this query and its child require SIGKILL to stop.
+                    trap '' TERM
+                    sleep 60 &
+                    printf '%s %s\n' "$$" "$!" >"${0}.timeout-pids"
+                    wait "$!"
                     ;;
             esac
             ;;

@@ -43,7 +43,7 @@ make_fast_timeout() {
     rm -f "$CASE_TOOLS/sleep"
     cat >"$CASE_TOOLS/sleep" <<'EOF'
 #!/bin/bash
-exit 0
+exec /bin/sleep 0.1
 EOF
     chmod +x "$CASE_TOOLS/sleep"
 }
@@ -88,7 +88,6 @@ make_python() {
         printf 'MOCK_VENV_PROBE_RUNTIME=%q\n' "$venv_probe_runtime"
         printf 'MOCK_DISTRIBUTION=%q\n' "$MOCK_DISTRIBUTION"
         printf 'MOCK_IMPORT_MODULE=%q\n' "$MOCK_IMPORT_MODULE"
-        printf 'MOCK_REAL_PYTHON=%q\n' "$TEST_SYSTEM_PYTHON"
         printf 'MOCK_IS_VIRTUALENV=no\n'
         printf 'MOCK_CALL_LOG=%q\n' "${CASE_DIR}/python-calls"
     } >"${python_path}.config"
@@ -836,23 +835,41 @@ test_managed_drift_reconciliation_failure_preserves_environment() {
         || fail "failed uv sync replaced the managed environment"
 }
 
-test_managed_ownership_check_failure_never_reports_ready() {
-    new_case uv-ownership-failed
-    touch "$CASE_PROJECT/uv.lock"
-    MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
-    export MOCK_UV_PYTHON
-    make_python "$MOCK_UV_PYTHON" "7.4.2" success "9.9.0" success ">=3" yes
-    make_uv "$CASE_TOOLS/uv"
-    MOCK_MANAGER_OWNERSHIP_MODE="fail"
-    export MOCK_MANAGER_OWNERSHIP_MODE
+test_managed_ownership_check_failure_continues_with_installed_sdk() {
+    local manager=""
+    for manager in uv poetry; do
+        new_case "${manager}-ownership-failed"
+        touch "$CASE_PROJECT/${manager}.lock"
+        make_python "$CASE_PROJECT/.venv/bin/python" "7.4.2" success "9.9.0" success ">=3" yes
+        if [ "$manager" = uv ]; then
+            MOCK_UV_PYTHON="$CASE_PROJECT/.venv/bin/python"
+            export MOCK_UV_PYTHON
+            make_uv "$CASE_TOOLS/uv"
+        else
+            MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+            export MOCK_POETRY_PYTHON
+            make_poetry "$CASE_TOOLS/poetry"
+        fi
+        MOCK_MANAGER_OWNERSHIP_MODE="fail"
+        export MOCK_MANAGER_OWNERSHIP_MODE
 
-    run_bootstrap
-    assert_contains "$CASE_OUTPUT" "SDK=installed"
-    assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.9.0"
-    assert_contains "$CASE_OUTPUT" "REASON=sdk_version_check_failed"
-    assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
-    assert_not_contains "$CASE_OUTPUT" "STATUS=ready"
-    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "lock --dry-run"
+        run_bootstrap
+        assert_contains "$CASE_OUTPUT" "SDK=installed"
+        assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.9.0"
+        assert_contains "$CASE_OUTPUT" "REASON=sdk_freshness_check_failed"
+        assert_contains "$CASE_OUTPUT" "STATUS=ready"
+        assert_contains "$CASE_ERROR_OUTPUT" "Could not check for a newer datalens-sdk release"
+        [ "$(<"$CASE_PROJECT/.venv/bin/python.sdk-installed")" = "9.9.0" ] \
+            || fail "failed ownership query changed installed SDK"
+        assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "lock --dry-run"
+        assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add --dry-run"
+
+        run_bootstrap --upgrade-sdk 9.9.1
+        assert_contains "$CASE_OUTPUT" "REASON=sdk_version_check_failed"
+        assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
+        [ "$(<"$CASE_PROJECT/.venv/bin/python.sdk-installed")" = "9.9.0" ] \
+            || fail "failed approved upgrade changed installed SDK"
+    done
 }
 
 test_managed_project_without_tool_is_preserved() {
@@ -910,6 +927,7 @@ test_uv_version_check_timeout_continues_with_installed_sdk() {
     assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
     assert_contains "$CASE_OUTPUT" "REASON=sdk_freshness_check_timeout"
     assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "lock --dry-run"
     [ "$(<"$MOCK_UV_PYTHON.sdk-installed")" = "9.8.7" ] || fail "timed-out uv version check modified installed SDK"
 }
 
@@ -928,6 +946,7 @@ test_poetry_version_check_timeout_continues_with_installed_sdk() {
     assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
     assert_contains "$CASE_OUTPUT" "REASON=sdk_freshness_check_timeout"
     assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "add --dry-run"
     [ "$(<"$MOCK_POETRY_PYTHON.sdk-installed")" = "9.8.7" ] || fail "timed-out Poetry version check modified installed SDK"
 }
 
@@ -1028,9 +1047,18 @@ test_approved_version_disappearing_never_downgrades() {
 }
 
 test_version_check_timeout_continues_with_working_sdk() {
+    local started_at="$SECONDS"
+    local pid=""
     new_case version-check-timeout
-    make_python "$CASE_PROJECT/.venv/bin/python" "7.4.2" hang "unused" success ">=3" yes success "9.8.7"
+    make_python "$CASE_PROJECT/.venv/bin/python" "7.4.2" hang_tree "unused" success ">=3" yes success "9.8.7"
     run_bootstrap
+    [ "$((SECONDS - started_at))" -le 20 ] || fail "freshness check exceeded its timeout and cleanup budget"
+    for pid in $(<"$CASE_PROJECT/.venv/bin/python.timeout-pids"); do
+        case "$(ps -o stat= -p "$pid" 2>/dev/null || true)" in
+            ""|*Z*) : ;;
+            *) kill -KILL "$pid" 2>/dev/null || true; fail "timed-out query left process $pid running" ;;
+        esac
+    done
     assert_contains "$CASE_OUTPUT" "SDK=installed"
     assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.8.7"
     assert_contains "$CASE_OUTPUT" "REASON=sdk_freshness_check_timeout"
@@ -1729,7 +1757,7 @@ for test_name in \
     test_uv_stale_lock_requires_sync_before_freshness \
     test_poetry_version_drift_requires_install_before_freshness \
     test_managed_drift_reconciliation_failure_preserves_environment \
-    test_managed_ownership_check_failure_never_reports_ready \
+    test_managed_ownership_check_failure_continues_with_installed_sdk \
     test_managed_project_without_tool_is_preserved \
     test_invalid_managed_environment_is_preserved \
     test_existing_current_sdk_is_reused_after_check \

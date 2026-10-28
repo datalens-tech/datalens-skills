@@ -60,6 +60,8 @@ directly.
 Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
 
 - `STATUS=ready` — use the absolute interpreter from `PYTHON` for every subsequent Python call.
+  - `REASON=sdk_freshness_check_timeout` — tell the user that the 15-second freshness check timed out and you are continuing with installed `SDK_VERSION`. Do not ask whether to continue or describe the installed version as current.
+  - `REASON=sdk_freshness_check_failed` — tell the user that checking for a newer SDK release failed and you are continuing with installed `SDK_VERSION`. Match the user's language. Do not ask whether to continue or describe the installed version as current.
 - `STATUS=decision_required` — do not load the package skill or perform SDK work yet:
   - `REASON=sdk_install_required` — a uv/Poetry project needs `datalens-sdk` installed through its
     manager. The dependency may already be declared but missing from an unsynced environment, or

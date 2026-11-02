@@ -1,0 +1,90 @@
+[
+  {
+    "query": "Установи DataLens On-premises на выделенную ВМ через K3s.",
+    "should_trigger": true
+  },
+  {
+    "query": "Продолжи установку DataLens: init.sh упал, .values.debug.yaml отсутствует.",
+    "should_trigger": true
+  },
+  {
+    "query": "Включи Public API на уже работающем DataLens On-premises.",
+    "should_trigger": true
+  },
+  {
+    "query": "Настрой LDAP для нашей on-premises инсталляции DataLens.",
+    "should_trigger": true
+  },
+  {
+    "query": "Переведи вход в DataLens On-premises на OIDC и отключи локальных пользователей.",
+    "should_trigger": true
+  },
+  {
+    "query": "Помоги обновить дистрибутив DataLens On-premises.",
+    "should_trigger": true
+  },
+  {
+    "query": "Сделай резервную копию служебных данных DataLens On-premises перед переносом.",
+    "should_trigger": true
+  },
+  {
+    "query": "Удали DataLens On-premises с выделенного сервера после резервного копирования.",
+    "should_trigger": true
+  },
+  {
+    "query": "После изменения values.yaml DataLens On-premises падает с context deadline exceeded.",
+    "should_trigger": true
+  },
+  {
+    "query": "Подбери ресурсы для промышленной установки DataLens On-premises.",
+    "should_trigger": true
+  },
+  {
+    "query": "Создай дашборд DataLens через Python SDK.",
+    "should_trigger": false
+  },
+  {
+    "query": "Включи DataLens в организации Yandex Cloud.",
+    "should_trigger": false
+  },
+  {
+    "query": "Что такое DataLens и чем облачная версия отличается от on-premises?",
+    "should_trigger": false
+  },
+  {
+    "query": "Настрой доступ к внутреннему DataLens на datalens.yandex-team.ru.",
+    "should_trigger": false
+  },
+  {
+    "query": "Исправь формулу вычисляемого поля в датасете DataLens.",
+    "should_trigger": false
+  },
+  {
+    "query": "Сделай HTML-отчет для размещения в DataLens.",
+    "should_trigger": false
+  },
+  {
+    "query": "Resolve Yandex Cloud organization groups into DataLens RLSv2 subject IDs.",
+    "should_trigger": false
+  },
+  {
+    "query": "Разверни K3s для приложения, не связанного с DataLens.",
+    "should_trigger": false
+  },
+  {
+    "query": "Создай чарт через API уже настроенного DataLens On-premises.",
+    "should_trigger": false
+  },
+  {
+    "query": "Добавь фильтр на дашборд в on-premises DataLens.",
+    "should_trigger": false
+  },
+  {
+    "query": "Установи Open Source DataLens из datalens-tech/datalens через Docker Compose.",
+    "should_trigger": false
+  },
+  {
+    "query": "Обнови Open Source DataLens через Helm-чарт из публичного GitHub-репозитория.",
+    "should_trigger": false
+  }
+]

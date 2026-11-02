@@ -26,17 +26,21 @@ The host renders the page like this:
 Prepended at upload (after stripping any leading BOM and any prior injection block — injection is
 idempotent). You do **not** author this; you author *against* it:
 
+The Maps hosts are `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net` and
+`suggest-maps.yandex.ru` — referred to below as "the four Yandex Maps hosts".
+
 ```html
 <!DOCTYPE html>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
-  script-src https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://yastatic.net 'unsafe-inline' 'unsafe-eval';
-  style-src  https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://yastatic.net https://fonts.googleapis.com 'unsafe-inline';
-  img-src    https://yastatic.net data: blob:;
+  script-src https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://yastatic.net https://api-maps.yandex.ru https://*.api-maps.yandex.ru https://*.maps.yandex.net https://suggest-maps.yandex.ru 'unsafe-inline' 'unsafe-eval';
+  style-src  https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://yastatic.net https://fonts.googleapis.com 'unsafe-inline' blob:;
+  img-src    https://yastatic.net https://api-maps.yandex.ru https://*.api-maps.yandex.ru https://*.maps.yandex.net https://suggest-maps.yandex.ru https://yandex.ru/clck/ data: blob:;
   font-src   https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com data:;
   media-src  data: blob:;
-  connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; base-uri 'none'">
+  connect-src https://api-maps.yandex.ru https://*.api-maps.yandex.ru https://*.maps.yandex.net https://suggest-maps.yandex.ru;
+  form-action 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; base-uri 'none'">
 ```
 
 Notes / rationale:
@@ -48,21 +52,30 @@ Notes / rationale:
   files from `fonts.gstatic.com` (in `font-src`).
 - **KaTeX / MathJax** `woff2` files come from jsdelivr/cdnjs — that is why those hosts are in
   `font-src`.
-- **`connect-src 'none'`** kills `fetch`/XHR/WebSocket/EventSource/`sendBeacon` — the page cannot
-  talk to the network. Inline the data.
+- **`connect-src`** lists only the Yandex Maps hosts, so the JS API can fetch its config and
+  vector tiles. For everything else `fetch`/XHR/WebSocket/EventSource/`sendBeacon` still fail —
+  the page cannot reach your data over the network. Inline the data.
 - **`worker-src 'none'`** is explicit so it can't fall back to `script-src`.
-- `img-src` is `yastatic.net` + `data:` + `blob:`; `media-src` is `data:`/`blob:` only.
+- **Yandex Maps JS API 2.1** (`api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`,
+  `suggest-maps.yandex.ru` for the search control's suggestions) is allowed in `script-src`,
+  `img-src` (tiles, icons) and `connect-src`. `style-src` carries `blob:` because the Maps API
+  injects its own stylesheets as blob URLs. `yandex.ru/clck/` in
+  `img-src` is the API's usage beacon; you never reference it yourself. Maps v3 is **not**
+  supported: it needs an API key to load at all and its vector renderer wants workers.
+- `img-src` is `yastatic.net` + the maps hosts + `data:` + `blob:`; `media-src` is `data:`/`blob:`
+  only.
 
 ### Resource allowlist (what the linter checks)
 
 | Directive | Hosts / schemes |
 |-----------|-----------------|
-| `script-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, inline |
-| `style-src` | same + `fonts.googleapis.com`, inline |
+| `script-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, the four Yandex Maps hosts, inline |
+| `style-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, `fonts.googleapis.com`, `blob:`, inline |
 | `font-src` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `fonts.gstatic.com`, `data:` |
-| `img-src` | `yastatic.net`, `data:`, `blob:` |
+| `img-src` | `yastatic.net`, the four Yandex Maps hosts, `data:`, `blob:` (the policy also lists `yandex.ru/clck/` for the Maps API's own beacon — the linter does not allow it, never reference it) |
 | `media-src` | `data:`, `blob:` |
-| `connect-src`, `form-action`, `frame-src`, `object-src`, `worker-src`, `base-uri` | `'none'` |
+| `connect-src` | the four Yandex Maps hosts (Maps API internals only) |
+| `form-action`, `frame-src`, `object-src`, `worker-src`, `base-uri` | `'none'` |
 
 ## Serving
 
@@ -70,6 +83,7 @@ Notes / rationale:
   revision, and mints a **presigned GET with a 10–30 s expiry** — the permission check and URL
   minting are in one function, so there is no time-of-check/time-of-use gap.
 - Theme and language travel as **signed query params**.
+- A presigned URL opened top-level within its TTL keeps the injected CSP but loses the iframe sandbox.
 - Object metadata on PutObject: `Content-Type: text/html; charset=utf-8`,
   `Content-Disposition: inline`, `Cache-Control: no-store`.
 - Upload is **server-side JSON RPC-like API** (HTML as a plain string, never base64); there are **no
@@ -89,13 +103,11 @@ applies a MIME allowlist and a size cap, sanitizes the filename, and generates t
 parent.postMessage({ code: 'EXPORT', data: { name, mime, data } }, '*');
 ```
 
-**Open a URL** — ordinary links do **not** navigate inside the opaque-origin sandbox (an `<a href>`
-does nothing, and `target="_blank"` only reaches `about:blank`). Intercept the click,
-`preventDefault()`, and ask the host to open it:
+**Open a URL** — ask the host to open a link from the sandbox:
 
 ```js
 parent.postMessage({ code: 'OPEN_URL', data: { url } }, '*');
 ```
 
-So a page that links out should attach one delegated click listener that turns link clicks into
-`OPEN_URL` messages (leaving in-page `#fragment` anchors alone).
+Use the framed-only delegated listener in
+[authoring-constraints.md](authoring-constraints.md), which leaves in-page anchors alone.

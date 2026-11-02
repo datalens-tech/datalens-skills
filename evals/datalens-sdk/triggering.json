@@ -1,5 +1,9 @@
 [
   {
+    "query": "Publish my existing report.html in a DataLens workbook using the Python SDK, and return the permanent link. Use only operations documented by my installed SDK version.",
+    "should_trigger": true
+  },
+  {
     "query": "построй дашборд по датасету sales через python — три чарта и селектор по региону",
     "should_trigger": true
   },

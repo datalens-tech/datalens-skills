@@ -8,12 +8,17 @@ state-in-memory.**
 
 | Resource | Allowed sources |
 |----------|-----------------|
-| `<script src>` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net` |
+| `<script src>` | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `suggest-maps.yandex.ru` |
 | inline `<script>` | ✅ allowed (`'unsafe-inline'` / `'unsafe-eval'`) |
-| `<link rel=stylesheet>` / `<style>` | script hosts above **+** `fonts.googleapis.com`; inline ✅ |
+| `<link rel=stylesheet>` / `<style>` | the CDN hosts above (not the maps hosts) **+** `fonts.googleapis.com`, `blob:`; inline ✅ |
 | fonts (`@font-face`, font files) | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `fonts.gstatic.com`, `data:` |
-| `<img>` | `yastatic.net`, `data:`, `blob:` |
+| `<img>` | `yastatic.net`, `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `data:`, `blob:` |
 | `<audio>` / `<video>` / `<source>` | `data:`, `blob:` only |
+| `fetch` / XHR | `api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `suggest-maps.yandex.ru` only — used by the Maps API internally |
+
+Yandex Maps JS API 2.1 from `api-maps.yandex.ru` is the one external service the page may talk
+to. Do not route it through a CDN mirror, and do not use v3 (it needs an API key to load and
+workers to render).
 
 Rewrite off-allowlist libraries through an allowed mirror:
 
@@ -29,7 +34,7 @@ Rewrite off-allowlist libraries through an allowed mirror:
 | Category | Blocked | Do instead |
 |----------|---------|------------|
 | Storage | `localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, Cache API | in-memory JS variables |
-| Network | `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `navigator.sendBeacon` | **inline the data** into the page |
+| Network | `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `navigator.sendBeacon` to any host but Yandex Maps | **inline the data** into the page |
 | Workers | `new Worker`, `SharedWorker`, `navigator.serviceWorker` | do work on the main thread |
 | Popups/dialogs | `window.open`, `alert`, `confirm`, `prompt` | render UI in the page |
 | Navigation / links | navigating the parent (`parent.location`, `top.location`); ordinary `<a href>` link navigation | post `{code:'OPEN_URL', data:{url}}` on click (below) |
@@ -66,16 +71,23 @@ exportFile('report.csv', 'text/csv', csvString);
 ```
 
 **Open a link** (ordinary navigation is blocked — an `<a href>` does nothing, and `target="_blank"`
-only reaches `about:blank`). Attach one delegated listener that turns link clicks into `OPEN_URL`:
+only reaches `about:blank`). Attach one delegated listener that turns link clicks into `OPEN_URL`,
+gated on being framed:
 
 ```js
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('a[href]');
-  if (!a || a.getAttribute('href').startsWith('#')) return; // leave in-page anchors alone
-  e.preventDefault();
-  parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
-});
+if (window.parent !== window) {
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a || a.getAttribute('href').startsWith('#')) return; // leave in-page anchors alone
+    e.preventDefault();
+    parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
+  });
+}
 ```
+
+A presigned URL opened top-level within its TTL, or a local preview, has `parent === window`:
+nothing answers `OPEN_URL`, so ungated `preventDefault()` cancels navigation.
+Gating the listener leaves those links to the browser.
 
 ## Encoding & size (upload-time)
 
@@ -93,8 +105,12 @@ document.addEventListener('click', (e) => {
 - external `src`/`href` host outside the CSP allowlist (with jsdelivr/cdnjs rewrite hints)
 - storage / network / worker / popup / dialog / capability API usage
 - blocked tags and `<a download>`
-- (advisory note) `<a href>` links with no `OPEN_URL` handler detected — they won't navigate
+- `link-navigation` (advisory note): `<a href>` links with no `OPEN_URL` handler detected
+- `unguarded-open-url` (advisory note): `OPEN_URL` interception with no recognizable frame check
 - CSS `url()` / `@import` and `srcset` hosts off the allowlist
 - missing early `<meta charset>`; high `U+FFFD` density
 - wrapping markdown code fences
 - size over the soft (5 MB) / hard (10 MB) limits
+
+The link notes use page-wide text heuristics; a frame comparison elsewhere can suppress a note
+without guarding the listener. Verify link behavior in a browser, both framed and top-level.

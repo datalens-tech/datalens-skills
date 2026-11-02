@@ -31,11 +31,19 @@ from urllib.parse import urlsplit
 
 # --- CSP allowlist (from the injected policy in the ADR) ---------------------------------
 
-SCRIPT_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com", "cdn.tailwindcss.com", "yastatic.net"}
-STYLE_HOSTS = SCRIPT_HOSTS | {"fonts.googleapis.com"}
+# Entries starting with "*." match any subdomain, mirroring CSP host wildcards.
+CDN_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com", "cdn.tailwindcss.com", "yastatic.net"}
+YANDEX_MAPS_HOSTS = {
+    "api-maps.yandex.ru",
+    "*.api-maps.yandex.ru",
+    "*.maps.yandex.net",
+    "suggest-maps.yandex.ru",
+}
+SCRIPT_HOSTS = CDN_HOSTS | YANDEX_MAPS_HOSTS
+STYLE_HOSTS = CDN_HOSTS | {"fonts.googleapis.com"}
 FONT_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com", "fonts.gstatic.com"}
 LINK_HOSTS = STYLE_HOSTS | FONT_HOSTS  # stylesheets, preconnect, preload, icons
-IMG_HOSTS = {"yastatic.net"}           # plus data: / blob:
+IMG_HOSTS = {"yastatic.net"} | YANDEX_MAPS_HOSTS  # plus data: / blob:
 IMG_SCHEMES = {"data", "blob"}
 MEDIA_SCHEMES = {"data", "blob"}       # media-src data: blob:
 
@@ -68,13 +76,13 @@ API_PATTERNS = [
     (re.compile(r"\bcaches\s*\."),
      "blocked-storage", "Cache API is blocked in this sandbox"),
     (re.compile(r"\bfetch\s*\("),
-     "blocked-network", "fetch() is blocked (connect-src 'none'); inline the data instead"),
+     "blocked-network", "fetch() can only reach the Yandex Maps hosts; inline the data instead"),
     (re.compile(r"\bXMLHttpRequest\b"),
-     "blocked-network", "XMLHttpRequest is blocked (connect-src 'none')"),
+     "blocked-network", "XMLHttpRequest can only reach the Yandex Maps hosts; inline the data instead"),
     (re.compile(r"\b(WebSocket|EventSource)\b"),
-     "blocked-network", "live connections are blocked (connect-src 'none')"),
+     "blocked-network", "live connections can only reach the Yandex Maps hosts"),
     (re.compile(r"sendBeacon"),
-     "blocked-network", "navigator.sendBeacon is blocked (connect-src 'none')"),
+     "blocked-network", "navigator.sendBeacon can only reach the Yandex Maps hosts"),
     (re.compile(r"\bnew\s+(?:Shared)?Worker\s*\("),
      "blocked-worker", "workers are blocked (worker-src 'none')"),
     (re.compile(r"serviceWorker"),
@@ -89,6 +97,15 @@ API_PATTERNS = [
      "blocked-capability", "camera / geolocation / fullscreen are blocked in this sandbox"),
 ]
 
+# Comparisons between the current window and parent/top, in either operand order (heuristic).
+_CURRENT_WINDOW = r"(?:window\s*\.\s*)?(?:self|window)"
+_ANCESTOR_WINDOW = r"(?:window\s*\.\s*)?(?:parent|top)"
+FRAME_GUARD_RE = re.compile(
+    rf"\b(?:{_CURRENT_WINDOW}\s*[!=]==?\s*{_ANCESTOR_WINDOW}"
+    rf"|{_ANCESTOR_WINDOW}\s*[!=]==?\s*{_CURRENT_WINDOW})\b"
+)
+PREVENT_DEFAULT_RE = re.compile(r"preventDefault\s*\(")
+
 # Size limits (bytes) from the ADR: 5–10 MB enforced at upload.
 SOFT_SIZE = 5 * 1024 * 1024
 HARD_SIZE = 10 * 1024 * 1024
@@ -97,7 +114,7 @@ CHARSET_WINDOW = 1024  # charset must appear within the first 1024 bytes
 
 class Finding:
     def __init__(self, severity, code, line, message):
-        self.severity = severity  # 'error' | 'warning'
+        self.severity = severity  # 'error' | 'warning' | 'note'
         self.code = code
         self.line = line
         self.message = message
@@ -105,6 +122,17 @@ class Finding:
     def format(self, source):
         loc = f"{source}:{self.line}" if self.line else source
         return f"{loc}: {self.severity}: {self.code}: {self.message}"
+
+
+def host_allowed(host, allowed_hosts):
+    """Exact match, or a "*.example.com" entry matching any subdomain (CSP wildcard rules)."""
+    for allowed in allowed_hosts:
+        if allowed.startswith("*."):
+            if host.endswith(allowed[1:]):
+                return True
+        elif host == allowed:
+            return True
+    return False
 
 
 def url_scheme_host(value):
@@ -162,8 +190,11 @@ class PageLinter(HTMLParser):
 
         if tag == "script" and attr.get("src"):
             self._check_host("script", attr["src"], SCRIPT_HOSTS)
+            self._check_maps_script(attr["src"])
         elif tag == "link" and attr.get("href"):
-            self._check_host("link", attr["href"], LINK_HOSTS)
+            rel = (attr.get("rel") or "").lower().split()
+            if not ({"preconnect", "dns-prefetch"} & set(rel)):  # hints; CSP does not govern them
+                self._check_host("link", attr["href"], LINK_HOSTS)
         elif tag == "img" and attr.get("src"):
             self._check_host("img", attr["src"], IMG_HOSTS, schemes=IMG_SCHEMES)
         elif tag in ("audio", "video", "source") and attr.get("src"):
@@ -203,11 +234,23 @@ class PageLinter(HTMLParser):
             if not r or low.startswith(("#", "data:", "blob:")):
                 continue  # same-doc fragment or inline data — not a host fetch
             _, host = url_scheme_host(r)
-            if host and host not in self.CSS_URL_HOSTS:
+            if host and not host_allowed(host, self.CSS_URL_HOSTS):
                 hint = REWRITE_HINTS.get(host)
                 self._add("warning", "csp-css",
                           f"CSS loads from {host}, which the CSP blocks"
                           + (f" — {hint}" if hint else ""))
+
+    def _check_maps_script(self, src):
+        scheme, host = url_scheme_host(src)
+        path = urlsplit(src.strip()).path.lower()
+        if host and host_allowed(host, YANDEX_MAPS_HOSTS):
+            if path.startswith("/v3"):
+                self._add("warning", "maps-version",
+                          "Yandex Maps JS API v3 does not work in DataLens pages (it needs an "
+                          "API key to load and workers to render); use /2.1/")
+        elif host in CDN_HOSTS and ("ymaps" in path or "yandex-maps" in path):
+            self._add("warning", "maps-mirror",
+                      "load Yandex Maps only from api-maps.yandex.ru, not through a CDN mirror")
 
     def _check_host(self, kind, value, allowed_hosts, schemes=frozenset()):
         scheme, host = url_scheme_host(value)
@@ -223,7 +266,7 @@ class PageLinter(HTMLParser):
                       f"<{kind}> uses a non-allowlisted resource ({value!r}); "
                       f"the CSP only permits specific CDNs")
             return
-        if host in allowed_hosts:
+        if host_allowed(host, allowed_hosts):
             return
         if host in REWRITE_HINTS:
             self._add("warning", "csp-rewrite",
@@ -296,6 +339,13 @@ def lint_bytes(raw):
                                 "they should navigate, intercept clicks and post "
                                 "{code:'OPEN_URL', data:{url}} to the parent (advisory; the linter "
                                 "cannot verify the handler)"))
+
+    if ("OPEN_URL" in text
+            and PREVENT_DEFAULT_RE.search(text)
+            and not FRAME_GUARD_RE.search(text)):
+        findings.append(Finding("note", "unguarded-open-url", 0,
+                                "OPEN_URL interception has no recognizable frame check; "
+                                "wrap it in `if (window.parent !== window)`"))
     return findings
 
 
@@ -355,7 +405,28 @@ _BAD_CASES = [
     (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x.test/y">go</a>', "link-navigation", "note"),  # advisory note: link with no OPEN_URL handler
     (b'<!DOCTYPE html><meta charset=utf-8><a href="#top">top</a>', None, "clean"),  # in-page anchor is fine
     (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")</script>', None, "clean"),  # OPEN_URL handler present
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})</script>', "unguarded-open-url", "note"),  # advisory note: interception with no frame check
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>if(window.parent!==window){document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})}</script>', None, "clean"),  # gated on being framed
+    (b'<!DOCTYPE html><meta charset=utf-8><a href="https://x">x</a><script>if(self!==top){document.addEventListener("click",function(e){e.preventDefault();parent.postMessage({code:"OPEN_URL",data:{url:1}},"*")})}</script>', None, "clean"),  # the self !== top spelling counts too
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window!==parent){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', None, "clean"),  # reversed operands
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window!==self){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),  # both identify the current window
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(parent!==top){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),  # neither identifies the current window
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window.frameElement){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),  # null in the opaque-origin sandbox
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window===window){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(self==self){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(stop===top){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(grandparent==window){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window!==parentNode){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(top!==selfish){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', "unguarded-open-url", "note"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script>function install(){if(window.parent===window)return;e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', None, "clean"),  # equality as an early return
+    (b'<!DOCTYPE html><meta charset=utf-8><script>if(window.top != window.self){e.preventDefault();parent.postMessage({code:"OPEN_URL"},"*")}</script>', None, "clean"),
     (b'<!DOCTYPE html><body>no encoding declared</body>', "charset", "warning"),
+    (b'<!DOCTYPE html><meta charset=utf-8><script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU"></script>', None, "clean"),  # Yandex Maps 2.1 is allowed
+    (b'<!DOCTYPE html><meta charset=utf-8><img src="https://core-renderer-tiles.maps.yandex.net/tiles?l=map">', None, "clean"),  # wildcard maps host
+    (b'<!DOCTYPE html><meta charset=utf-8><link rel="preconnect" href="https://api-maps.yandex.ru">', None, "clean"),  # preconnect is a hint, not a CSP load
+    (b'<!DOCTYPE html><meta charset=utf-8><img src="https://evil-maps.yandex.net/x.png">', "csp-host", "warning"),  # wildcard needs a real subdomain
+    (b'<!DOCTYPE html><meta charset=utf-8><script src="https://api-maps.yandex.ru/v3/?apikey=k"></script>', "maps-version", "warning"),  # v3 is unsupported
+    (b'<!DOCTYPE html><meta charset=utf-8><script src="https://cdn.jsdelivr.net/npm/ymaps@2.1/x.js"></script>', "maps-mirror", "warning"),  # maps must not be mirrored
 ]
 
 
@@ -374,13 +445,15 @@ def self_test():
         codes = {f.code for f in findings}
         if kind == "clean":
             # Should not raise any CSP host/scheme/css warning.
-            bad = codes & {"csp-host", "csp-scheme", "csp-css", "csp-rewrite", "link-navigation"}
+            bad = codes & {"csp-host", "csp-scheme", "csp-css", "csp-rewrite", "link-navigation",
+                           "unguarded-open-url"}
             if bad:
                 failures += 1
                 print(f"FAIL (expected no CSP warning) for {raw[:48]!r}: {sorted(bad)}")
-        elif want_code not in codes:
+        elif not any(f.code == want_code and f.severity == kind for f in findings):
             failures += 1
-            print(f"FAIL (expected {want_code}) for {raw[:48]!r}: got {sorted(codes)}")
+            print(f"FAIL (expected {kind}: {want_code}) for {raw[:48]!r}: "
+                  f"got {[(f.severity, f.code) for f in findings]}")
 
     total = 1 + len(_BAD_CASES)
     if failures:

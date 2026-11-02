@@ -1,15 +1,16 @@
 ---
 name: datalens-html-pages
 description: >-
-  Use this skill to build or fix a standalone HTML page or report in DataLens. DataLens takes
+  Use this skill to build, fix, or publish a standalone HTML page or report in DataLens. DataLens takes
   a whole self-contained HTML document — often an AI-generated report with tables, charts, and
   a CSV/download button — and renders it in a sandboxed, CSP-locked iframe, so normal web code
   silently breaks. Reach for it when generating such a page from scratch, and when one already
   in DataLens misbehaves: images, fonts, scripts, or CDN libraries blocked or throwing
   Content-Security-Policy errors; fetch/XHR/localStorage failing; charts blank; a download or
   Export button doing nothing; an upload rejected as too large or the wrong encoding; or the
-  page needing to match the user's DataLens theme (light/dark) and language (ru/en). Also
-  covers which CDNs and hosts are allowed and making the page fully self-contained. Not for
+  page needing to match the user's DataLens theme (light/dark) and language (ru/en); or
+  embedding a Yandex map. Also covers which CDNs and hosts are allowed and making the page
+  fully self-contained. Not for
   DataLens chart cells or HTML-markup table columns.
 license: Apache-2.0
 metadata:
@@ -35,8 +36,9 @@ CDNs, and most browser APIs are blocked.
   `Cross-Origin-Opener-Policy: same-origin`). Same-origin isolation depends on this; never assume
   same-origin access.
 - **Injected CSP** (you do **not** write it — the platform prepends it, idempotently):
-  `default-src 'none'` with a small allowlist for `script`/`style`/`font`/`img`/`media`, and
-  `connect-src`, `form-action`, `frame-src`, `object-src`, `worker-src`, `base-uri` all `'none'`.
+  `default-src 'none'` with a small allowlist for `script`/`style`/`font`/`img`/`media`,
+  `connect-src` opened only to the Yandex Maps hosts, and `form-action`, `frame-src`,
+  `object-src`, `worker-src`, `base-uri` all `'none'`.
   Full policy in [references/csp-and-sandbox.md](references/csp-and-sandbox.md).
 - **Served** from a presigned GET that expires in **10–30 seconds**, after a server-side
   permission check. Theme/language ride along as signed query params.
@@ -51,22 +53,36 @@ network, storage, or the parent page.
 
 | Resource | Allowed from |
 |----------|--------------|
-| Scripts | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net` (+ inline) |
-| Styles | the above **+** `fonts.googleapis.com` (+ inline) |
+| Scripts | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `cdn.tailwindcss.com`, `yastatic.net`, Yandex Maps (`api-maps.yandex.ru`, `*.api-maps.yandex.ru`, `*.maps.yandex.net`, `suggest-maps.yandex.ru`) (+ inline) |
+| Styles | the CDNs above **+** `fonts.googleapis.com`, `blob:` (+ inline) |
 | Fonts | `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, `fonts.gstatic.com`, `data:` |
-| Images | `yastatic.net`, `data:`, `blob:` |
+| Images | `yastatic.net`, the Yandex Maps hosts, `data:`, `blob:` |
 | Media | `data:`, `blob:` only |
+| Network (`connect-src`) | the Yandex Maps hosts only — for the Maps API itself, not for your data |
 
 Load Google Fonts the standard way (`<link>` CSS from `fonts.googleapis.com`, font files from
 `fonts.gstatic.com`). Mirror off-allowlist libraries (unpkg, plot.ly, d3js.org, jQuery) through
 jsdelivr/cdnjs.
 
+**Yandex Maps JS API 2.1** works out of the box: load it from `api-maps.yandex.ru` (with the
+user's API key when they have one) and render into a fixed-height container. Scripts, tiles and
+the API's own requests are allowed. Use **2.1, not v3** — v3 refuses to load without a key and
+needs workers the sandbox blocks. Everything else about the sandbox still holds — your own data
+is inlined, not fetched.
+
+```html
+<script src="https://api-maps.yandex.ru/2.1/?apikey=YOUR_KEY&lang=ru_RU"></script>
+<div id="map" style="height: 400px"></div>
+<script>ymaps.ready(() => new ymaps.Map('map', {center: [55.76, 37.64], zoom: 10}));</script>
+```
+
 **Blocked — do not use** (they throw or silently fail):
 
 - **Storage:** `localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, Cache API →
   keep all state in memory.
-- **Network:** `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon` — `connect-src`
-  is `'none'`. **Inline your data into the page** instead of fetching it.
+- **Network:** `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon` to anything
+  except the Yandex Maps hosts — `connect-src` allows nothing else. **Inline your data into the
+  page** instead of fetching it.
 - **Frames/objects/forms:** nested `<iframe>`, `<object>`, `<embed>`, `<form>` submission,
   `<base>`.
 - **Workers, popups, dialogs, downloads, camera/geolocation/fullscreen**, navigating the parent
@@ -93,17 +109,20 @@ parent.postMessage({ code: 'EXPORT', data: { name: 'report.csv', mime: 'text/csv
 
 **Opening links** — an ordinary `<a href>` does **not** navigate inside the sandbox (opaque
 origin; even `target="_blank"` only reaches `about:blank`). To open a URL, ask the host: intercept
-the click, `preventDefault()`, and post `OPEN_URL`. One delegated listener covers every link:
+the click, `preventDefault()`, and post `OPEN_URL`. One delegated listener covers every link —
+**gate it on being framed** so the file still works opened top-level or previewed locally.
 
 ```js
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('a[href]');
-  if (!a) return;
-  const href = a.getAttribute('href');
-  if (!href || href.startsWith('#')) return;   // in-page anchors scroll normally — leave them
-  e.preventDefault();
-  parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
-});
+if (window.parent !== window) {
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('#')) return; // in-page anchors scroll normally — leave them
+    e.preventDefault();
+    parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
+  });
+}
 ```
 
 **Encoding & size** (enforced at upload):
@@ -147,6 +166,9 @@ missing charset, mojibake, wrapping code fences, and oversize pages. Run
 
 ## Serve & publish
 
+To upload or publish a page and return its permanent link, follow
+[references/publication.md](references/publication.md).
+
 Serving is server-side; know the shape so you author correctly:
 
 - **Presigned GET, 10–30 s TTL**, minted only after a permission check (no TOCTOU gap). Don't
@@ -172,6 +194,7 @@ that must stay private into the page** — it is a report, not a trusted app sur
 | "localStorage is not available" / throws | storage API in sandbox | keep state in memory |
 | Fonts don't render | font host off-allowlist | Google Fonts (`fonts.googleapis.com` CSS + `fonts.gstatic.com` files) or jsdelivr/cdnjs |
 | Image is blank | `http://` or off-allowlist host | use `yastatic.net`, `data:`, or `blob:` |
+| Yandex map is blank | Maps v3 used, API loaded from a mirror, or the container has no height | use JS API 2.1 from `api-maps.yandex.ru` and give the container an explicit height |
 | Download button does nothing | download APIs blocked | post `{code:'EXPORT', data:{name,mime,data}}` to the parent |
 | Clicking a link does nothing | links don't navigate in the sandbox | intercept the click and post `{code:'OPEN_URL', data:{url}}` |
 | Page renders as plain text / broken head | wrapping markdown code fences | remove the ``` fences |

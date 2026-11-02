@@ -129,14 +129,16 @@
     });
 
     // Links don't navigate in the sandbox — intercept clicks and ask the host to open the URL.
-    document.addEventListener('click', (e) => {
-      const a = e.target.closest('a[href]');
-      if (!a) return;
-      const href = a.getAttribute('href');
-      if (!href || href.startsWith('#')) return; // in-page anchors scroll normally
-      e.preventDefault();
-      parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
-    });
+    if (window.parent !== window) {
+      document.addEventListener('click', (e) => {
+        const a = e.target.closest('a[href]');
+        if (!a) return;
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('#')) return; // in-page anchors scroll normally
+        e.preventDefault();
+        parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
+      });
+    }
   </script>
 </body>
 </html>

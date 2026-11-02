@@ -13,7 +13,7 @@
   <a id="dl" download="sales.csv" href="#">Download CSV</a>
 
   <script>
-    // network is blocked (connect-src 'none') and storage throws in the sandbox:
+    // network is blocked (connect-src only allows the Yandex Maps API) and storage throws in the sandbox:
     const cached = localStorage.getItem('sales');
     fetch('/api/sales')
       .then((r) => r.json())

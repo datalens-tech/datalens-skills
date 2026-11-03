@@ -100,6 +100,10 @@ Parse the `KEY=VALUE` lines after the `---BOOTSTRAP---` marker:
     but its freshness or manager ownership could not be verified. Ask whether to continue with the
     reported `SDK_VERSION` or retry the original bootstrap command. Do not silently continue or
     describe it as current. This reason never applies to `SDK=missing`.
+    This also applies when Poetry's local manifest/lock validation fails or times out, including
+    a missing or stale lockfile. Explain that this is a local project validation issue, not evidence
+    of an unavailable package index. Obtain the user's decision before continuing; never regenerate
+    the lockfile or synchronize the environment automatically.
   - `REASON=sdk_upgrade_failed` with `SDK=installed` — explain that the upgrade failed but the
     reported `SDK_VERSION` remains usable. Ask whether to continue with it or stop; retry the exact
     upgrade command only if the user requests it.

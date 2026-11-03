@@ -734,12 +734,17 @@ bootstrap_probe_managed_ownership() {
             ;;
         poetry)
             if ! bootstrap_run_with_timeout "$query_log" \
+                poetry check --lock --no-interaction --no-ansi; then
+                MANAGED_OWNERSHIP_RESULT="local_validation_failed"
+                return 0
+            fi
+            if ! bootstrap_run_with_timeout "$query_log" \
                 poetry install --sync --dry-run --no-interaction --no-ansi; then
                 [ "$BOOTSTRAP_COMMAND_TIMED_OUT" = "yes" ] && MANAGED_OWNERSHIP_RESULT="timeout"
                 return 0
             fi
-            if grep -Eiq "(installing|updating|downgrading)[[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([[:space:](]|$)" \
-                "$query_log"; then
+            if grep -Eiv ':[[:space:]]*Skipped([[:space:]]|$)' "$query_log" | \
+                grep -Ei "(installing|updating|downgrading)[[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([[:space:](]|$)" >/dev/null; then
                 MANAGED_OWNERSHIP_RESULT="drifted"
             elif grep -Eiq "removing[[:space:]]+${BOOTSTRAP_DISTRIBUTION_PATTERN}([[:space:](]|$)" "$query_log"; then
                 MANAGED_OWNERSHIP_RESULT="unowned"
@@ -1148,6 +1153,11 @@ if [ -d "$BOOTSTRAP_VENV" ]; then
         BOOTSTRAP_VERSION_CHECK_DEADLINE=$((SECONDS + BOOTSTRAP_VERSION_CHECK_TIMEOUT_SECONDS))
         bootstrap_probe_managed_ownership "$BOOTSTRAP_PYTHON"
         case "$MANAGED_OWNERSHIP_RESULT" in
+            local_validation_failed)
+                bootstrap_note "Poetry local project validation failed or timed out; check pyproject.toml and poetry.lock before continuing."
+                bootstrap_emit_version_decision "sdk_version_check_failed"
+                exit 0
+                ;;
             timeout)
                 if [ "$BOOTSTRAP_ACTION" = "check" ]; then
                     bootstrap_emit_freshness_fallback "sdk_freshness_check_timeout"

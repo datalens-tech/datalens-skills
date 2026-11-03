@@ -247,4 +247,72 @@ assert_contains "$requests" "/public/simple/$TEST_DEPENDENCY/"
 assert_not_contains "$requests" "/internal/simple/$TEST_DEPENDENCY/"
 assert_not_contains "$requests" "/public/simple/$TEST_DISTRIBUTION/"
 
-printf '2 Poetry source integration tests passed with %s\n' "$(poetry --version)"
+# Keep the healthy installed SDK but invalidate only local project metadata.
+VALID_MANIFEST="$(cat "$CONFIGURED_PROJECT/pyproject.toml")"
+VALID_LOCK="$(cat "$CONFIGURED_PROJECT/poetry.lock")"
+project_fingerprint() {
+    python3 - "$CONFIGURED_PROJECT" <<'PYHASH'
+import hashlib
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1])
+for name in ("pyproject.toml", "poetry.lock"):
+    p = root / name
+    print(name, hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else "missing")
+PYHASH
+}
+restore_project() {
+    printf '%s\n' "$VALID_MANIFEST" >"$CONFIGURED_PROJECT/pyproject.toml"
+    printf '%s\n' "$VALID_LOCK" >"$CONFIGURED_PROJECT/poetry.lock"
+}
+for invalid_case in stale_lock missing_lock invalid_manifest; do
+    restore_project
+    case "$invalid_case" in
+        stale_lock)
+            python3 - "$CONFIGURED_PROJECT/pyproject.toml" <<'PYSTALE'
+import pathlib
+import sys
+p = pathlib.Path(sys.argv[1])
+s = p.read_text()
+assert "^0.3.0" in s
+p.write_text(s.replace("^0.3.0", "^0.4.0"))
+PYSTALE
+            ;;
+        missing_lock) rm "$CONFIGURED_PROJECT/poetry.lock" ;;
+        invalid_manifest)
+            python3 - "$CONFIGURED_PROJECT/pyproject.toml" <<'PYINVALID'
+import pathlib
+import sys
+p = pathlib.Path(sys.argv[1])
+s = p.read_text()
+p.write_text(s.replace('[tool.poetry]\n', '[tool.poetry]\nreadme = "missing-readme.md"\n', 1))
+PYINVALID
+            ;;
+    esac
+    before="$(project_fingerprint)"
+    requests_before="$(cat "$SERVER_LOG")"
+    output="$(run_bootstrap "$CONFIGURED_PROJECT")"
+    assert_contains "$output" "SDK_VERSION=0.3.0"
+    assert_contains "$output" "REASON=sdk_version_check_failed"
+    assert_contains "$output" "STATUS=decision_required"
+    [ "$before" = "$(project_fingerprint)" ] || fail "$invalid_case changed project files"
+    [ "$requests_before" = "$(cat "$SERVER_LOG")" ] || fail "$invalid_case reached package index"
+    [ "$($PROJECT_PYTHON -c 'import importlib.metadata, sys; print(importlib.metadata.version(sys.argv[1]))' "$TEST_DISTRIBUTION")" = "0.3.0" ] \
+        || fail "$invalid_case changed installed SDK"
+done
+
+# Valid metadata still allows reuse when the configured package source is offline.
+restore_project
+before="$(project_fingerprint)"
+kill "$SERVER_PID"
+wait "$SERVER_PID" 2>/dev/null || true
+SERVER_PID=""
+output="$(run_bootstrap "$CONFIGURED_PROJECT")"
+assert_contains "$output" "SDK_VERSION=0.3.0"
+assert_contains "$output" "STATUS=ready"
+assert_contains "$output" "REASON=sdk_freshness_check_"
+[ "$before" = "$(project_fingerprint)" ] || fail "offline fallback changed project files"
+[ "$($PROJECT_PYTHON -c 'import importlib.metadata, sys; print(importlib.metadata.version(sys.argv[1]))' "$TEST_DISTRIBUTION")" = "0.3.0" ] \
+    || fail "offline fallback changed installed SDK"
+
+printf '6 Poetry source integration tests passed with %s\n' "$(poetry --version)"

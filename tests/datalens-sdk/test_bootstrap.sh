@@ -212,6 +212,15 @@ make_poetry() {
     cat >"$poetry_path" <<'EOF'
 #!/bin/bash
 case "${1:-}" in
+    check)
+        printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
+        case "${MOCK_POETRY_CHECK_MODE:-success}" in
+            success) exit 0 ;;
+            warning) printf 'Warning: deprecated project metadata\n' >&2; exit 0 ;;
+            hang) while :; do :; done ;;
+            *) printf 'Error: local project validation failed\n' >&2; exit 1 ;;
+        esac
+        ;;
     source)
         printf '%s\n' "$*" >>"${MOCK_MANAGER_LOG:?}"
         [ "${2:-}" = "show" ] || exit 1
@@ -252,10 +261,17 @@ case "${1:-}" in
             *'--sync --dry-run'*)
                 case "${MOCK_MANAGER_OWNERSHIP_MODE:-owned}" in
                     hang) while :; do :; done ;;
-                    owned) printf 'No dependencies to install or update\n' ;;
+                    owned)
+                        printf '  - Installing %s (%s): Skipped for the following reason: Already installed\n' \
+                            "$MOCK_DISTRIBUTION" "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")"
+                        ;;
                     unowned)
                         printf 'Package operations: 0 installs, 0 updates, 1 removal\n'
                         printf '  - Removing %s (%s)\n' "$MOCK_DISTRIBUTION" "$(<"${MOCK_POETRY_PYTHON:?}.sdk-installed")"
+                        ;;
+                    update_long_log)
+                        printf '  - Updating %s (9.8.7 -> 9.9.0)\n' "$MOCK_DISTRIBUTION"
+                        awk 'BEGIN { for (i=0; i<10000; i++) print "Resolved other-dependency without changes" }'
                         ;;
                     update)
                         printf 'Package operations: 0 installs, 1 update, 0 removals\n'
@@ -331,11 +347,12 @@ new_case() {
     MOCK_POETRY_DEPENDENCY_MODE="undeclared"
     MOCK_POETRY_DECLARED_VERSION="0.3.0"
     MOCK_POETRY_SOURCE_MODE="present"
+    MOCK_POETRY_CHECK_MODE="success"
     export MOCK_MANAGER_LOG MOCK_MANAGER_ADD_MODE MOCK_MANAGER_RESOLVE_MODE MOCK_MANAGER_AVAILABLE_VERSION \
         MOCK_MANAGER_LOCKED_VERSION MOCK_MANAGER_MANIFEST_VERSION MOCK_MANAGER_LOCK_FILE \
         MOCK_MANAGER_OWNERSHIP_MODE MOCK_MANAGER_SYNC_MODE \
         MOCK_POETRY_DEPENDENCY_MODE MOCK_POETRY_DECLARED_VERSION MOCK_POETRY_SOURCE_MODE \
-        MOCK_DISTRIBUTION MOCK_IMPORT_MODULE
+        MOCK_DISTRIBUTION MOCK_IMPORT_MODULE MOCK_POETRY_CHECK_MODE
     unset MOCK_PYENV_VERSION MOCK_PYENV_PREFIX MOCK_UV_PYTHON MOCK_POETRY_PYTHON UV_PROJECT_ENVIRONMENT || true
     unset PIP_REQUIRE_VIRTUALENV || true
     unset DATALENS_BOOTSTRAP_DISTRIBUTION DATALENS_BOOTSTRAP_IMPORT_MODULE \
@@ -870,6 +887,62 @@ test_managed_ownership_check_failure_continues_with_installed_sdk() {
         [ "$(<"$CASE_PROJECT/.venv/bin/python.sdk-installed")" = "9.9.0" ] \
             || fail "failed approved upgrade changed installed SDK"
     done
+}
+
+test_poetry_local_validation_failure_requires_decision() {
+    local mode=""
+    for mode in stale_lock missing_lock invalid_manifest hang; do
+        new_case "poetry-local-check-${mode}"
+        touch "$CASE_PROJECT/poetry.lock"
+        MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+        export MOCK_POETRY_PYTHON
+        make_python "$MOCK_POETRY_PYTHON" "7.4.2" success "9.9.0" success ">=3" yes
+        make_poetry "$CASE_TOOLS/poetry"
+        MOCK_POETRY_CHECK_MODE="$mode"
+        export MOCK_POETRY_CHECK_MODE
+        [ "$mode" != hang ] || make_fast_timeout
+        run_bootstrap
+        assert_contains "$CASE_OUTPUT" "SDK=installed"
+        assert_contains "$CASE_OUTPUT" "SDK_VERSION=9.9.0"
+        assert_contains "$CASE_OUTPUT" "REASON=sdk_version_check_failed"
+        assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
+        assert_contains "$CASE_ERROR_OUTPUT" "Poetry local project validation"
+        assert_contains "$(<"$MOCK_MANAGER_LOG")" "check --lock --no-interaction --no-ansi"
+        assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "install --sync"
+        assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add --dry-run"
+        [ "$(<"$MOCK_POETRY_PYTHON.sdk-installed")" = "9.9.0" ] || fail "local validation changed SDK"
+    done
+}
+
+test_poetry_long_dry_run_preserves_drift_detection() {
+    new_case poetry-long-dry-run
+    touch "$CASE_PROJECT/poetry.lock"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_POETRY_PYTHON
+    make_python "$MOCK_POETRY_PYTHON" "7.4.2" success "9.8.7" success ">=3" yes
+    make_poetry "$CASE_TOOLS/poetry"
+    MOCK_MANAGER_OWNERSHIP_MODE="update_long_log"
+    export MOCK_MANAGER_OWNERSHIP_MODE
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "REASON=sdk_install_required"
+    assert_contains "$CASE_OUTPUT" "STATUS=decision_required"
+    assert_not_contains "$(<"$MOCK_MANAGER_LOG")" "add --dry-run"
+    [ "$(<"$MOCK_POETRY_PYTHON.sdk-installed")" = "9.8.7" ] || fail "drift detection changed SDK"
+}
+
+test_poetry_local_validation_warnings_do_not_block() {
+    new_case poetry-local-check-warning
+    touch "$CASE_PROJECT/poetry.lock"
+    MOCK_POETRY_PYTHON="$CASE_PROJECT/.venv/bin/python"
+    export MOCK_POETRY_PYTHON
+    make_python "$MOCK_POETRY_PYTHON" "7.4.2" success "9.9.0" success ">=3" yes
+    make_poetry "$CASE_TOOLS/poetry"
+    MOCK_POETRY_CHECK_MODE="warning"
+    export MOCK_POETRY_CHECK_MODE
+    run_bootstrap
+    assert_contains "$CASE_OUTPUT" "STATUS=ready"
+    assert_contains "$(<"$MOCK_MANAGER_LOG")" "check --lock --no-interaction --no-ansi
+install --sync --dry-run"
 }
 
 test_managed_project_without_tool_is_preserved() {
@@ -1758,6 +1831,9 @@ for test_name in \
     test_poetry_version_drift_requires_install_before_freshness \
     test_managed_drift_reconciliation_failure_preserves_environment \
     test_managed_ownership_check_failure_continues_with_installed_sdk \
+    test_poetry_local_validation_failure_requires_decision \
+    test_poetry_local_validation_warnings_do_not_block \
+    test_poetry_long_dry_run_preserves_drift_detection \
     test_managed_project_without_tool_is_preserved \
     test_invalid_managed_environment_is_preserved \
     test_existing_current_sdk_is_reused_after_check \

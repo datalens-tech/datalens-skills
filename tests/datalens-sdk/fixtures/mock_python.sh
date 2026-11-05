@@ -167,6 +167,16 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then
                     printf 'ERROR: package index is unavailable\n' >&2
                     exit 1
                     ;;
+                hang)
+                    while :; do sleep 1; done
+                    ;;
+                hang_tree)
+                    # Both this query and its child require SIGKILL to stop.
+                    trap '' TERM
+                    sleep 60 &
+                    printf '%s %s\n' "$$" "$!" >"${0}.timeout-pids"
+                    wait "$!"
+                    ;;
             esac
             ;;
         *'--upgrade pip'*)

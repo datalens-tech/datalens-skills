@@ -1,0 +1,98 @@
+[
+  {
+    "id": "catalog-create",
+    "scope": "catalog",
+    "query": "Create a staging namespace in the DataLens Platform REST Catalog and an orders table in it.",
+    "should_trigger": true
+  },
+  {
+    "id": "catalog-metadata",
+    "scope": "catalog",
+    "query": "Context: our lakehouse is in DLP, meaning DataLens Platform. Find the ID of the orders table, its field types, and its column descriptions.",
+    "should_trigger": true
+  },
+  {
+    "id": "transfer-incremental",
+    "scope": "transfers",
+    "query": "Configure a regular transfer of public.orders from PostgreSQL into DataLens Platform using updated_at as the cursor.",
+    "should_trigger": true
+  },
+  {
+    "id": "transfer-duplicates",
+    "scope": "transfers",
+    "query": "Our DataLens Platform transfer appends the whole source every hour. Diagnose its cursor settings and plan a historical reload.",
+    "should_trigger": true
+  },
+  {
+    "id": "trino-saved-query",
+    "scope": "trino",
+    "query": "Create and run a saved Trino query with a report_date parameter in a DataLens Platform workbook.",
+    "should_trigger": true
+  },
+  {
+    "id": "trino-cleanup",
+    "scope": "trino",
+    "query": "Context: this is a Trino table in DataLens Platform. Remove all its rows while preserving the table definition.",
+    "should_trigger": true
+  },
+  {
+    "id": "spark-ingestion",
+    "scope": "spark",
+    "query": "Write a PySpark ingestion job for DataLens Platform that calls a source API and validates the loaded rows.",
+    "should_trigger": true
+  },
+  {
+    "id": "spark-status",
+    "scope": "spark",
+    "query": "A Spark job in DataLens Platform is stuck. Inspect its application, session, and compute status.",
+    "should_trigger": true
+  },
+  {
+    "id": "airflow-dag",
+    "scope": "airflow",
+    "query": "Create an Airflow DAG in DataLens Platform: parallel Spark ingestion jobs, followed by a saved Trino query and a final check.",
+    "should_trigger": true
+  },
+  {
+    "id": "airflow-explain",
+    "scope": "airflow",
+    "query": "Explain how an Airflow task in DataLens Platform should obtain its service-account IAM token and track a Spark job.",
+    "should_trigger": true
+  },
+  {
+    "id": "cloudenv-storage",
+    "scope": "cloudenv-access",
+    "query": "Upload scripts/orders.py to DataLens Platform CloudEnv storage and prepare a URL for running it in Spark.",
+    "should_trigger": true
+  },
+  {
+    "id": "mixed-pipeline-dashboard",
+    "scope": "mixed",
+    "query": "Configure an incremental orders transfer in DataLens Platform, then build a DataLens dashboard from that data using the SDK.",
+    "should_trigger": true
+  },
+  {
+    "id": "bi-dashboard",
+    "scope": "bi",
+    "query": "Build a DataLens dashboard using the Python SDK and an existing dataset, without changing the source data processing.",
+    "should_trigger": false
+  },
+  {
+    "id": "bi-workbook",
+    "scope": "bi",
+    "query": "Move a DataLens workbook containing connections and dashboards to another collection.",
+    "should_trigger": false
+  },
+  {
+    "id": "rls",
+    "scope": "rls",
+    "query": "Resolve Yandex Cloud groups into DataLens RLSv2 subject IDs for an existing dashboard.",
+    "should_trigger": false
+  },
+  {
+    "id": "standalone-spark",
+    "scope": "standalone",
+    "query": "Why does PySpark in my local Jupyter notebook report a type error when joining two DataFrames?",
+    "should_trigger": false
+  }
+]

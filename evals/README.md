@@ -6,6 +6,50 @@ untracked under `.skill-creator/`.
 
 Two kinds live here, per skill.
 
+## `datalens-platform/`
+
+`triggering.json` contains 16 English requests: 12 positive cases covering all six
+component groups in `datalens`'s platform routing table, including a mixed BI/DLP
+task, and four negative cases covering a BI dashboard, workbook organization,
+RLS subject resolution, and standalone PySpark in Jupyter.
+
+Evaluate the same cases in two independent, label-blind runs:
+
+1. **catalog:** choose from the descriptions of every available repository skill.
+2. **router:** decide whether the full `datalens` instructions route to the platform skill.
+
+Prepare inputs without expected labels or scope tags:
+
+```bash
+python evals/datalens-platform/grade_routing.py --prepare catalog --output-dir .skill-creator/platform-eval
+python evals/datalens-platform/grade_routing.py --prepare router --output-dir .skill-creator/platform-eval
+```
+
+Give each input JSON to a fresh model/evaluator with access only to that input.
+Use the same model/settings for both stages, record them with the outputs, and do
+not expose labels, another stage's answers, or earlier conversations. The evaluator
+returns one `{id, should_trigger, reason}` object per request. No request is executed;
+there are no live platform calls. Then grade the outputs:
+
+```bash
+python evals/datalens-platform/grade_routing.py --predictions .skill-creator/platform-eval/catalog-decisions.json
+python evals/datalens-platform/grade_routing.py --predictions .skill-creator/platform-eval/router-decisions.json
+```
+
+Accept a run only if both stages have zero false positives and zero false negatives.
+The scorer rejects missing, duplicated, extra, and non-boolean decisions. It does
+not simulate a model with keyword matching or manufacture predictions. Results
+measure routing decisions on this finite set; they do not prove automatic loading
+in every agent runtime or correctness of the DLP workflows. Native loading needs a
+separate runtime integration test. Record unrun stages as **not run**.
+
+Manifests record input/source hashes. Keep model outputs and reports untracked in
+`.skill-creator/`. Run the case validation and scorer unit tests locally:
+
+```bash
+python -m unittest discover -s evals/datalens-platform -p 'test_*.py'
+```
+
 ## `datalens-yc-rls-resolve/`
 
 ### `triggering.json` — *should the skill fire?*

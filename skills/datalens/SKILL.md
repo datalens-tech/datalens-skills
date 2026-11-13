@@ -1,7 +1,7 @@
 ---
 name: datalens
 description: >-
-  Start here for Yandex DataLens when the task has not yet settled on a tool, or when the question
+  Start here for Yandex DataLens and DataLens Platform (DLP) when the task has not yet settled on a tool, or when the question
   is about DataLens itself rather than about carrying something out in it: what DataLens is and
   what it can do; which installation is in play — Yandex Cloud, on-premise, or the internal Yandex
   Team one — and how they differ in hosts, auth, and capabilities; what a collection, workbook,
@@ -10,6 +10,7 @@ description: >-
   that does the work. NOT for doing the work once the approach is chosen — that is `datalens-sdk`
   for Python and `datalens-html-pages` for standalone HTML reports — and not for interpreting what
   business metric values mean.
+  For DLP storage and processing, load `datalens-platform`.
 license: Apache-2.0
 metadata:
   domain: datalens
@@ -100,6 +101,20 @@ specific to it.
 
 Tool-specific skills detect the installation for you — the SDK, for instance, ships a preflight
 that reports it. Do not hand-roll detection.
+
+## DataLens Platform routing
+
+For work with the following DataLens Platform (DLP) components, load
+[`datalens-platform`](../datalens-platform/SKILL.md):
+
+| Component | Tasks |
+|---|---|
+| REST Catalog / lakehouse | Work with catalogs, namespaces, tables, schemas, or their metadata; resolve their IDs. |
+| Data transfers | Configure sources, schedules, incremental cursors, initial loads, or backfills; diagnose duplicates and verify runs. |
+| Trino and saved SQL queries | Create, update, or execute DLP queries; transform, check, or clear platform table data. |
+| Spark / PySpark | Configure or inspect DLP compute, sessions, applications, or jobs; ingest data, call source APIs, transform data, or run checks. |
+| Airflow | Build, deploy, schedule, or diagnose DLP DAGs; coordinate Trino/Spark jobs, dependencies, retries, and run status. |
+| CloudEnv and platform access | Select the DLP environment, organization, or YC profile; diagnose platform identity/auth; use CloudEnv storage for Spark job files. You may use CloudEnv storage for Airflow DAGs. |
 
 ## Choosing an interface
 

@@ -4,15 +4,15 @@
     "should_trigger": true
   },
   {
-    "query": "чем в даталенсе отличается воркбук от папки? у нас в навигации и то и другое встречается",
+    "query": "What is the difference between a workbook and a folder in DataLens? We see both in our navigation.",
     "should_trigger": true
   },
   {
-    "query": "хотим автоматизировать даталенс. что использовать — api, sdk, mcp? что вообще есть",
+    "query": "We want to automate DataLens. Should we use the API, SDK, or MCP? What options are available?",
     "should_trigger": true
   },
   {
-    "query": "какие инсталляции есть у datalens и чем они отличаются?",
+    "query": "What DataLens installations are available, and how do they differ?",
     "should_trigger": true
   },
   {
@@ -20,7 +20,7 @@
     "should_trigger": true
   },
   {
-    "query": "у нас даталенс развёрнут на своих серверах. где у него api-эндпоинт?",
+    "query": "Our DataLens installation runs on our own servers. Where is its API endpoint?",
     "should_trigger": true
   },
   {
@@ -28,7 +28,7 @@
     "should_trigger": true
   },
   {
-    "query": "какой хост у api даталенса в яндекс облаке и где посмотреть спеку?",
+    "query": "What is the DataLens API host in Yandex Cloud, and where can I find its specification?",
     "should_trigger": true
   },
   {
@@ -36,39 +36,39 @@
     "should_trigger": true
   },
   {
-    "query": "нам нужно программно создавать дашборды на регулярной основе. с чего начать, что почитать",
+    "query": "We need to create dashboards programmatically on a regular basis. Where should we start, and what should we read?",
     "should_trigger": true
   },
   {
-    "query": "построй дашборд с выручкой по регионам через python sdk, датасет уже есть — dataset_id 9f3c1",
+    "query": "Build a dashboard showing revenue by region using the Python SDK. The dataset already exists: dataset_id 9f3c1.",
     "should_trigger": false
   },
   {
-    "query": "напиши скрипт, который клонирует дашборд из одного воркбука в другой",
+    "query": "Write a script that clones a dashboard from one workbook to another.",
     "should_trigger": false
   },
   {
-    "query": "мой html-отчёт в даталенсе не грузит plotly, в консоли ошибка content-security-policy. как починить",
+    "query": "My HTML report in DataLens does not load Plotly, and the console shows a content-security-policy error. How can I fix it?",
     "should_trigger": false
   },
   {
-    "query": "сделай standalone html страницу с таблицей продаж и кнопкой выгрузки в csv, чтобы открывалась в даталенсе",
+    "query": "Create a standalone HTML page with a sales table and a CSV export button that can be opened in DataLens.",
     "should_trigger": false
   },
   {
-    "query": "выручка в дашборде за март просела на 30%. посмотри, из-за чего",
+    "query": "Revenue in the dashboard dropped by 30% in March. Investigate why.",
     "should_trigger": false
   },
   {
-    "query": "открой дашборд и сделай скриншот для презентации",
+    "query": "Open the dashboard and take a screenshot for a presentation.",
     "should_trigger": false
   },
   {
-    "query": "как встроить дашборд даталенса в наш внутренний портал через iframe?",
+    "query": "How can I embed a DataLens dashboard in our internal portal using an iframe?",
     "should_trigger": false
   },
   {
-    "query": "напиши sql к clickhouse, который посчитает retention по когортам за полгода",
+    "query": "Write a ClickHouse SQL query that calculates cohort retention over six months.",
     "should_trigger": false
   },
   {
@@ -76,7 +76,23 @@
     "should_trigger": false
   },
   {
-    "query": "подскажи, как в графане сделать дашборд с алертами по cpu",
+    "query": "How can I create a Grafana dashboard with CPU alerts?",
+    "should_trigger": false
+  },
+  {
+    "query": "What is DataLens Platform, and how does it differ from regular DataLens overall?",
+    "should_trigger": true
+  },
+  {
+    "query": "Should I choose the SDK or MCP to automate DataLens Platform? For now, I only need a comparison of the interfaces.",
+    "should_trigger": true
+  },
+  {
+    "query": "Configure a regular transfer of public.orders from PostgreSQL into DataLens Platform using updated_at as the cursor.",
+    "should_trigger": false
+  },
+  {
+    "query": "Create an Airflow DAG in DataLens Platform: parallel Spark ingestion jobs, followed by a saved Trino query.",
     "should_trigger": false
   }
 ]

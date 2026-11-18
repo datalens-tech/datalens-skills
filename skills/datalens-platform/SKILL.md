@@ -16,15 +16,17 @@ DataLens Platform (DLP) is an extension of DataLens for data storage and process
 - Integration methods: https://yandex.cloud/ru/docs/datalens/concepts/ai-agents
 - Documentation: https://yandex.cloud/ru/docs/datalens/datalens-platform/
 
-For work requiring project state, use `memory.md` in the actual working project.
-Read existing memory. Ask only for facts needed now.
-Record confirmed non-secret resource IDs, environment and artifact paths in memory;
-append outcomes to the session log. No inter-agent task/result/status files are needed.
+For work requiring project state, follow the current agent's memory mechanism and
+the project's existing conventions. Read existing context and ask only for facts
+needed now. Record confirmed non-secret resource IDs, environment and artifact paths
+through that mechanism. A separate `memory.md` file is optional; use one only when
+the user requests it or the project already follows that convention.
 
 ## SQL Rule
 
-Never use `CROSS JOIN`. This prohibition also applies to a join with a single-row
-aggregate. You can use `CROSS JOIN` only when you create test data.
+Avoid unintended Cartesian products. When using `CROSS JOIN`, confirm that the
+Cartesian product is intended and that the expected row count is appropriate;
+a single-row aggregate is a valid case.
 
 Always use `TRUNCATE TABLE` when the user requests a complete cleanup of a table's
 rows. Preserve the table definition. Do not substitute an unconditional `DELETE FROM`
@@ -58,7 +60,7 @@ check the catalog in `asset.path` and extract `JSON.parse(asset.payload).id.id`.
 Treat this payload path as type-specific; inspect the returned structure for other
 object types. Keep only requested metadata, names, paths and identifiers in output,
 not embeddings or unrelated payloads. Record confirmed IDs and the lookup method
-in project memory.
+using the project's existing memory mechanism, when available.
 
 Use `searchObjects` to retrieve object metadata as well as IDs. Search results can
 include descriptions, documentation, tags, terms, domains and service-specific metadata
@@ -123,7 +125,7 @@ and obtain confirmation before deleting them.
 
 Use [yc iam whoami](https://yandex.cloud/ru/docs/iam/cli-ref/whoami) when the task
 requires the authenticated subject, or to diagnose identity, `createdBy` or refresh-token
-errors. The bundled helper prints only the subject returned by YC.
+errors.
 
 For the identity used by DLP, pass the same explicit YC profile and environment as the
 DLP call.
@@ -133,7 +135,11 @@ DLP call.
 Obtain the attached Airflow service account's IAM token inside a DAG task using
 [the exact IAM-token example: Prepare the DAG file and run the graph](https://yandex.cloud/ru/docs/managed-airflow/operations/get-iam-token?utm_referrer=about%3Ablank#dag).
 Do not copy the example's token logging into task code or return tokens through XCom.
-The following are examples of calls through the official Python SDK `datalens-sdk`.
+For Python implementation, load `datalens-sdk` and use the references shipped with
+the installed package: `references/setup.md`, `references/sql-queries.md`,
+`references/spark-applications.md`, and `references/cloud-environment-storage.md`.
+Those version-matched references are authoritative for complete recipes; the
+following snippets only show the SDK calls used by this orchestration.
 Both examples take a `DataLensClientYC` instance
 configured with `StaticYCIAMAuthProvider(org_id=org_id, token=iam_token)`.
 Obtaining the IAM token is the DAG's responsibility.
@@ -151,15 +157,16 @@ def run_trino_sql(client, query_id, report_date):
 
 Spark: obtain a download URL for a Python file already uploaded to CloudEnv S3
 and submit it. `object_path` is the object's key, for example `scripts/job.py`;
-`lakehouse_id` is the Spark cluster's Lakehouse ID (`SparkCluster.id`).
+`spark_cluster_id` is the cluster's DataLens entry ID (`SparkCluster.id`), not its
+managed cloud ID (`SparkCluster.cluster_id`).
 
 ```python
-def run_spark_python(client, lakehouse_id, cloud_environment_id, object_path):
+def run_spark_python(client, spark_cluster_id, cloud_environment_id, object_path):
     python_file_uri = client.create.bucket_download_url(
         cloud_environment_id=cloud_environment_id, path=object_path
     ).url
     return (
-        client.create.spark_application(cluster=lakehouse_id, name="python-job")
+        client.create.spark_application(cluster=spark_cluster_id, name="python-job")
         .pyspark(main_python_file_uri=python_file_uri)
         .build()
     )
@@ -171,37 +178,38 @@ Generate it immediately before each submission and do not log it.
 The Spark call returns a submission operation; it does not wait for the Python
 application to finish.
 
-Airflow's S3 storage is the S3 storage of the selected CloudEnv. Access it through
+Use CloudEnv storage for Spark job files. You may use CloudEnv storage for Airflow DAGs.
+Access the selected CloudEnv's S3 storage through
 [the DLP API](https://api.datalens.tech/) using the storage workflow of the selected
 official execution skill (`references/cloud-environment-storage.md` in the SDK skill).
 Discover existing DAG object paths before uploading; do not overwrite unrelated DAGs. Do not ask for or store the CloudEnv
 S3 location in project memory. Artifact configuration may contain object paths required
 for deployment; resolve the storage from the selected CloudEnv and API.
 
-## Optional startup questions for memory
+## Optional project context
 
-At the start of DLP work requiring project state, read existing memory and the user's
+At the start of DLP work requiring project state, read existing project context and the user's
 current instructions first. Ask only the unanswered questions below, using the user's
 language. Present them together as a short optional questionnaire (or group them within
 the input tool's limits). Say explicitly that the user may answer any subset or skip
 the entire questionnaire. Do not run this onboarding for documentation-only work.
 
-| Memory field | Question |
+| Context field | Question |
 | --- | --- |
 | `organization` | Which DLP organization ID (`org_id`) should be used? Provide the ID; an organization name is not sufficient. |
 | `data-processing code repository` | Where is the data-processing code stored? Provide a repository or local path. |
 | `Airflow scheduling repository`, `Airflow DAG folder` | Only if the user selects Git instead of CloudEnv S3: which repository, branch and DAG folder should be used? |
 | `repository access` | If Git is selected, how should the repository be accessed? Provide the method and a non-secret reference such as an SSH key path, SSH alias or CLI profile. Do not send key contents or tokens. |
 
-Save non-secret answers in the working project's `memory.md`, creating the file and
-adding missing fields when needed. Preserve existing confirmed values unless the user
-corrects them.
+When saving non-secret answers, use the agent's memory mechanism and existing
+project conventions. If an optional `memory.md` file is used, preserve existing
+confirmed values unless the user corrects them.
 
 For declined, omitted or unanswered fields, leave `UNKNOWN`; do not invent answers or
 fill them from defaults. Record an explicit skip separately from the field value so
 future starts do not repeat a declined question. No response leaves the questionnaire
 unanswered, not approved. Continue independent work while awaiting optional answers;
-the questionnaire itself must not block the task. Apply the same optional-answer rules
-to the environment and profile questions supplied through `dlp-iam-token`. A skipped field may be requested later only when a concrete operation requires
-it; explain why, and keep that dependent operation pending until the fact is resolved.
-The user can fill or correct memory at any time.
+the questionnaire itself must not block the task. A skipped field may be requested
+later only when a concrete operation requires it; explain why, and keep that dependent
+operation pending until the fact is resolved.
+The user can fill or correct project context at any time.

@@ -4,15 +4,15 @@
     "should_trigger": true
   },
   {
-    "query": "What is the difference between a workbook and a folder in DataLens? We see both in our navigation.",
+    "query": "чем в даталенсе отличается воркбук от папки? у нас в навигации и то и другое встречается",
     "should_trigger": true
   },
   {
-    "query": "We want to automate DataLens. Should we use the API, SDK, or MCP? What options are available?",
+    "query": "хотим автоматизировать даталенс. что использовать — api, sdk, mcp? что вообще есть",
     "should_trigger": true
   },
   {
-    "query": "What DataLens installations are available, and how do they differ?",
+    "query": "какие инсталляции есть у datalens и чем они отличаются?",
     "should_trigger": true
   },
   {
@@ -20,7 +20,7 @@
     "should_trigger": true
   },
   {
-    "query": "Our DataLens installation runs on our own servers. Where is its API endpoint?",
+    "query": "у нас даталенс развёрнут на своих серверах. где у него api-эндпоинт?",
     "should_trigger": true
   },
   {
@@ -28,7 +28,7 @@
     "should_trigger": true
   },
   {
-    "query": "What is the DataLens API host in Yandex Cloud, and where can I find its specification?",
+    "query": "какой хост у api даталенса в яндекс облаке и где посмотреть спеку?",
     "should_trigger": true
   },
   {
@@ -36,39 +36,39 @@
     "should_trigger": true
   },
   {
-    "query": "We need to create dashboards programmatically on a regular basis. Where should we start, and what should we read?",
+    "query": "нам нужно программно создавать дашборды на регулярной основе. с чего начать, что почитать",
     "should_trigger": true
   },
   {
-    "query": "Build a dashboard showing revenue by region using the Python SDK. The dataset already exists: dataset_id 9f3c1.",
+    "query": "построй дашборд с выручкой по регионам через python sdk, датасет уже есть — dataset_id 9f3c1",
     "should_trigger": false
   },
   {
-    "query": "Write a script that clones a dashboard from one workbook to another.",
+    "query": "напиши скрипт, который клонирует дашборд из одного воркбука в другой",
     "should_trigger": false
   },
   {
-    "query": "My HTML report in DataLens does not load Plotly, and the console shows a content-security-policy error. How can I fix it?",
+    "query": "мой html-отчёт в даталенсе не грузит plotly, в консоли ошибка content-security-policy. как починить",
     "should_trigger": false
   },
   {
-    "query": "Create a standalone HTML page with a sales table and a CSV export button that can be opened in DataLens.",
+    "query": "сделай standalone html страницу с таблицей продаж и кнопкой выгрузки в csv, чтобы открывалась в даталенсе",
     "should_trigger": false
   },
   {
-    "query": "Revenue in the dashboard dropped by 30% in March. Investigate why.",
+    "query": "выручка в дашборде за март просела на 30%. посмотри, из-за чего",
     "should_trigger": false
   },
   {
-    "query": "Open the dashboard and take a screenshot for a presentation.",
+    "query": "открой дашборд и сделай скриншот для презентации",
     "should_trigger": false
   },
   {
-    "query": "How can I embed a DataLens dashboard in our internal portal using an iframe?",
+    "query": "как встроить дашборд даталенса в наш внутренний портал через iframe?",
     "should_trigger": false
   },
   {
-    "query": "Write a ClickHouse SQL query that calculates cohort retention over six months.",
+    "query": "напиши sql к clickhouse, который посчитает retention по когортам за полгода",
     "should_trigger": false
   },
   {
@@ -76,7 +76,7 @@
     "should_trigger": false
   },
   {
-    "query": "How can I create a Grafana dashboard with CPU alerts?",
+    "query": "подскажи, как в графане сделать дашборд с алертами по cpu",
     "should_trigger": false
   },
   {

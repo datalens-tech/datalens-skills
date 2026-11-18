@@ -102,19 +102,15 @@ specific to it.
 Tool-specific skills detect the installation for you — the SDK, for instance, ships a preflight
 that reports it. Do not hand-roll detection.
 
-## DataLens Platform routing
+## DataLens Platform
 
-For work with the following DataLens Platform (DLP) components, load
-[`datalens-platform`](../datalens-platform/SKILL.md):
+For storage and data-processing work in DataLens Platform (DLP), also load
+`datalens-platform`. This covers REST Catalog, data transfers, saved SQL
+queries, Spark, Airflow, and CloudEnv.
 
-| Component | Tasks |
-|---|---|
-| REST Catalog / lakehouse | Work with catalogs, namespaces, tables, schemas, or their metadata; resolve their IDs. |
-| Data transfers | Configure sources, schedules, incremental cursors, initial loads, or backfills; diagnose duplicates and verify runs. |
-| Trino and saved SQL queries | Create, update, or execute DLP queries; transform, check, or clear platform table data. |
-| Spark / PySpark | Configure or inspect DLP compute, sessions, applications, or jobs; ingest data, call source APIs, transform data, or run checks. |
-| Airflow | Build, deploy, schedule, or diagnose DLP DAGs; coordinate Trino/Spark jobs, dependencies, retries, and run status. |
-| CloudEnv and platform access | Select the DLP environment, organization, or YC profile; diagnose platform identity/auth; use CloudEnv storage for Spark job files. You may use CloudEnv storage for Airflow DAGs. |
+Choose the execution interface below; for Python work, also load
+`datalens-sdk`. BI-only work with connections, datasets, charts, and
+dashboards does not require the platform skill.
 
 ## Choosing an interface
 

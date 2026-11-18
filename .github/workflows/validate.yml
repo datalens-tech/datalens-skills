@@ -34,6 +34,11 @@ jobs:
       - name: Test RLS subject resolution
         run: python skills/datalens-yc-rls-resolve/tests/test_rls_tool.py
 
+      - name: Validate DLP routing eval cases and grader
+        run: |
+          python evals/datalens-platform/grade_routing.py --validate-cases
+          python -m unittest discover -s evals/datalens-platform -p 'test_*.py'
+
       - name: Lint HTML pages (self-test + assets)
         run: |
           python skills/datalens-html-pages/scripts/validate_page.py --self-test

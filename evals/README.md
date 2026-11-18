@@ -8,15 +8,20 @@ Two kinds live here, per skill.
 
 ## `datalens-platform/`
 
-`triggering.json` contains 16 English requests: 12 positive cases covering all six
-component groups in `datalens`'s platform routing table, including a mixed BI/DLP
-task, and four negative cases covering a BI dashboard, workbook organization,
-RLS subject resolution, and standalone PySpark in Jupyter.
+`triggering.json` contains 32 English and Russian requests: 22 positive and 10
+negative cases. They cover the six components named in `datalens`'s DataLens
+Platform section, mixed BI/DLP work, prior conversation context (including CloudEnv
+without an explicit DLP name), BI-only requests mentioning Trino or Airflow, RLS,
+and standalone Trino/Spark/Airflow. The original 16 DLP cases are preserved.
+Eleven cases also specify `should_load_sdk`: five require platform and SDK together,
+two require SDK without platform, and four require neither. Existing upstream
+scenarios in other eval sets retain their original text, language, and labels.
 
 Evaluate the same cases in two independent, label-blind runs:
 
 1. **catalog:** choose from the descriptions of every available repository skill.
-2. **router:** decide whether the full `datalens` instructions route to the platform skill.
+2. **router:** choose using the full `datalens` instructions, including its short
+   platform section and execution-interface guidance.
 
 Prepare inputs without expected labels or scope tags:
 
@@ -28,7 +33,9 @@ python evals/datalens-platform/grade_routing.py --prepare router --output-dir .s
 Give each input JSON to a fresh model/evaluator with access only to that input.
 Use the same model/settings for both stages, record them with the outputs, and do
 not expose labels, another stage's answers, or earlier conversations. The evaluator
-returns one `{id, should_trigger, reason}` object per request. No request is executed;
+returns one `{id, should_trigger, should_load_sdk, reason}` object per request;
+the two skill decisions are independent booleans. Optional per-request `context`
+contains prior conversation, not an expected answer. No request is executed;
 there are no live platform calls. Then grade the outputs:
 
 ```bash
@@ -36,17 +43,25 @@ python evals/datalens-platform/grade_routing.py --predictions .skill-creator/pla
 python evals/datalens-platform/grade_routing.py --predictions .skill-creator/platform-eval/router-decisions.json
 ```
 
-Accept a run only if both stages have zero false positives and zero false negatives.
+Accept a run only if both stages have zero false positives and zero false negatives
+for platform activation and all explicitly labelled SDK decisions. A case fails
+when either required decision is wrong; selecting only one skill for a joint case
+therefore fails even when platform activation is correct. SDK decisions in older
+cases without `should_load_sdk` are recorded but not scored.
 The scorer rejects missing, duplicated, extra, and non-boolean decisions. It does
 not simulate a model with keyword matching or manufacture predictions. Results
 measure routing decisions on this finite set; they do not prove automatic loading
 in every agent runtime or correctness of the DLP workflows. Native loading needs a
 separate runtime integration test. Record unrun stages as **not run**.
 
-Manifests record input/source hashes. Keep model outputs and reports untracked in
+Manifests record input hashes and hashes of the skill files, case set, and grader.
+Record evaluator configuration alongside them and verify hashes against the exact
+revision being reported; do not reuse a pass after a source change.
+Keep model outputs and reports untracked in
 `.skill-creator/`. Run the case validation and scorer unit tests locally:
 
 ```bash
+python evals/datalens-platform/grade_routing.py --validate-cases
 python -m unittest discover -s evals/datalens-platform -p 'test_*.py'
 ```
 
@@ -175,6 +190,9 @@ Only the deterministic checks (see [`../.github/workflows/validate.yml`](../.git
 the model-in-the-loop *generation* evals above are run by hand.
 
 - `node scripts/validate_skills.mjs` — frontmatter + naming
+- `python evals/datalens-platform/grade_routing.py --validate-cases` and
+  `python -m unittest discover -s evals/datalens-platform -p 'test_*.py'` — DLP
+  case validation, grader behavior, joint SDK selection, and label-free inputs
 - `bash tests/datalens-sdk/test_bootstrap.sh` — interpreter selection, manager ownership, and the
   SDK install/upgrade consent protocol
 - `python skills/datalens-yc-rls-resolve/tests/test_rls_tool.py` — offline RLS parsing, resolution,

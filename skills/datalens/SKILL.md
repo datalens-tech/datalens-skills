@@ -104,13 +104,13 @@ that reports it. Do not hand-roll detection.
 
 ## DataLens Platform
 
-For storage and data-processing work in DataLens Platform (DLP), also load
-`datalens-platform`. This covers REST Catalog, data transfers, saved SQL
-queries, Spark, Airflow, and CloudEnv.
+For storage and data-processing work in DataLens Platform (DLP), identified by the
+request or established context, also load `datalens-platform`. This covers REST
+Catalog, data transfers, saved SQL queries, Spark, Airflow, and CloudEnv.
 
 Choose the execution interface below; for Python work, also load
-`datalens-sdk`. BI-only work with connections, datasets, charts, and
-dashboards does not require the platform skill.
+`datalens-sdk`. BI-only work with connections, datasets, charts, and dashboards,
+and standalone Trino/Spark/Airflow work outside DLP, do not require the platform skill.
 
 ## Choosing an interface
 

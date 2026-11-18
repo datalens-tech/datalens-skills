@@ -1,9 +1,13 @@
 ---
 name: datalens-platform
 description: >-
-  Use for DataLens Platform (DLP) storage and processing: REST Catalog,
-  data transfers, Trino queries, Spark jobs, Airflow orchestration,
-  CloudEnv storage, and platform access.
+  Use for storage and data-processing work in DataLens Platform (DLP):
+  REST Catalog, data transfers, saved SQL queries, Spark jobs, Airflow
+  orchestration, CloudEnv storage, and DLP access troubleshooting.
+  Applies when DLP is identified by the request or established context.
+  For Python automation of these resources, also load datalens-sdk.
+  Not for BI-only connections, datasets, charts, or dashboards, or standalone
+  Trino, Spark, or Airflow work outside DLP.
 license: Apache-2.0
 metadata:
   domain: datalens
@@ -15,12 +19,6 @@ DataLens Platform (DLP) is an extension of DataLens for data storage and process
 
 - Integration methods: https://yandex.cloud/ru/docs/datalens/concepts/ai-agents
 - Documentation: https://yandex.cloud/ru/docs/datalens/datalens-platform/
-
-For work requiring project state, follow the current agent's memory mechanism and
-the project's existing conventions. Read existing context and ask only for facts
-needed now. Record confirmed non-secret resource IDs, environment and artifact paths
-through that mechanism. A separate `memory.md` file is optional; use one only when
-the user requests it or the project already follows that convention.
 
 ## SQL Rule
 
@@ -130,53 +128,62 @@ errors.
 For the identity used by DLP, pass the same explicit YC profile and environment as the
 DLP call.
 
-## Airflow Trino and Spark task run, service account, DAG storage and status
+## Airflow execution through the SDK
 
 Obtain the attached Airflow service account's IAM token inside a DAG task using
-[the exact IAM-token example: Prepare the DAG file and run the graph](https://yandex.cloud/ru/docs/managed-airflow/operations/get-iam-token?utm_referrer=about%3Ablank#dag).
+[the IAM-token example: Prepare the DAG file and run the graph](https://yandex.cloud/ru/docs/managed-airflow/operations/get-iam-token#dag).
 Do not copy the example's token logging into task code or return tokens through XCom.
 For Python implementation, load `datalens-sdk` and use the references shipped with
 the installed package: `references/setup.md`, `references/sql-queries.md`,
-`references/spark-applications.md`, and `references/cloud-environment-storage.md`.
-Those version-matched references are authoritative for complete recipes; the
-following snippets only show the SDK calls used by this orchestration.
-Both examples take a `DataLensClientYC` instance
-configured with `StaticYCIAMAuthProvider(org_id=org_id, token=iam_token)`.
-Obtaining the IAM token is the DAG's responsibility.
+`references/spark-applications.md`, `references/lakehouse-operations.md`, and
+`references/cloud-environment-storage.md`. Use those version-matched references
+for executable recipes; this skill defines the orchestration requirements.
 
-Trino: execute an existing saved SQL query whose connection targets Trino.
-The saved query declares `SqlQueryParameter.date("report_date")` and uses
-`{{report_date}}`, for example `WHERE partition_date = {{report_date}}`.
-Pass the date as a `YYYY-MM-DD` string.
+### Saved SQL queries (Trino)
 
-```python
-def run_trino_sql(client, query_id, report_date):
-    query = client.get.sql_query(by_id=query_id)
-    return query.run(params={"report_date": report_date})
-```
+Fetch the saved query with `client.get.sql_query(by_id=...)` and execute it with
+`query.run(params=...)`, using its declared parameter names and types.
+The return value is not proof of success: `error`, `partial_success`, and `pending`
+are ordinary result statuses, not SDK exceptions. Require `status == "success"`
+and no `SqlQueryStatementError` in `results` before allowing dependent tasks to run.
+Propagate failed or partially successful runs as Airflow task failures, including
+the run ID and relevant statement error codes. For `pending`, fail with an explicit
+unfinished-execution message; do not report success or call `run()` again to poll.
+The current SDK exposes no saved-query run-polling method. Verify remote execution
+before retrying a request whose outcome is unknown.
 
-Spark: obtain a download URL for a Python file already uploaded to CloudEnv S3
-and submit it. `object_path` is the object's key, for example `scripts/job.py`;
-`spark_cluster_id` is the cluster's DataLens entry ID (`SparkCluster.id`), not its
-managed cloud ID (`SparkCluster.cluster_id`).
+### Spark applications
 
-```python
-def run_spark_python(client, spark_cluster_id, cloud_environment_id, object_path):
-    python_file_uri = client.create.bucket_download_url(
-        cloud_environment_id=cloud_environment_id, path=object_path
-    ).url
-    return (
-        client.create.spark_application(cluster=spark_cluster_id, name="python-job")
-        .pyspark(main_python_file_uri=python_file_uri)
-        .build()
-    )
-```
+1. Use the cluster's DataLens entry ID (`SparkCluster.id`), not its managed cloud
+   ID (`SparkCluster.cluster_id`). For a Python file already in CloudEnv S3, obtain
+   a signed URL using `client.create.bucket_download_url` with the selected
+   `cloud_environment_id` and object key, such as `scripts/job.py`. Pass its `.url`
+   to the PySpark builder's `main_python_file_uri`. Generate it immediately before
+   submission and keep it out of logs and XCom; HTTPS is a supported
+   [PySpark main-file URI](https://yandex.cloud/en/docs/managed-spark/operations/jobs-pyspark).
+2. Submit through `client.create.spark_application(...).pyspark(...).build()`.
+   Save the operation ID for diagnosis. `operation.wait()` waits only for submission;
+   check the returned snapshot's `.error` even when `.done` is true.
+3. Identify the submitted application through the documented get/list methods.
+   Use a unique submission name and verify an exact match when discovering its ID;
+   do not infer an application ID from opaque operation metadata or response fields.
+4. Poll the application's typed `status` through get/`refresh()` with a bounded
+   deadline. `DONE` permits dependent tasks; `ERROR` and `CANCELLED` fail the task.
+   Other states are unfinished and must not release dependents. There is no
+   `SparkApplication.wait()`; use the installed SDK references for these calls.
+5. A submission or application timeout fails the Airflow task without implying
+   remote cancellation. Retain the operation/application IDs and check remote state
+   before retrying; a fresh submission may duplicate an already running workload.
 
-`python_file_uri` is a temporary signed HTTPS URL to the S3 object, a supported
-[PySpark main-file URI](https://yandex.cloud/en/docs/managed-spark/operations/jobs-pyspark).
-Generate it immediately before each submission and do not log it.
-The Spark call returns a submission operation; it does not wait for the Python
-application to finish.
+### Airflow task boundaries and storage
+
+Keep SDK clients and bound models inside the executing task. Return only small,
+serializable ID/status values through XCom, or use `do_xcom_push=False` when no
+output is needed; never return a bound `LakehouseOperation` or the full SQL result.
+Use `retries=0` for non-idempotent submissions unless duplicate execution is handled
+explicitly. These checks must gate downstream tasks; successful submission alone
+does not establish successful execution. Report `DataLensAPIError.context.request_id`
+when handling an API failure.
 
 Use CloudEnv storage for Spark job files. You may use CloudEnv storage for Airflow DAGs.
 Access the selected CloudEnv's S3 storage through
@@ -188,9 +195,14 @@ for deployment; resolve the storage from the selected CloudEnv and API.
 
 ## Optional project context
 
-At the start of DLP work requiring project state, read existing project context and the user's
-current instructions first. Ask only the unanswered questions below, using the user's
-language. Present them together as a short optional questionnaire (or group them within
+For DLP work requiring project state, follow the agent's memory mechanism and existing
+project conventions. Read existing context and the user's current instructions first.
+Record confirmed non-secret resource IDs and artifact paths through that mechanism.
+A separate `memory.md` is optional; use it only when requested or already conventional
+in the project, preserving confirmed values unless the user corrects them.
+
+Ask only relevant unanswered questions below, using the user's language.
+Present them together as a short optional questionnaire (or group them within
 the input tool's limits). Say explicitly that the user may answer any subset or skip
 the entire questionnaire. Do not run this onboarding for documentation-only work.
 
@@ -200,10 +212,6 @@ the entire questionnaire. Do not run this onboarding for documentation-only work
 | `data-processing code repository` | Where is the data-processing code stored? Provide a repository or local path. |
 | `Airflow scheduling repository`, `Airflow DAG folder` | Only if the user selects Git instead of CloudEnv S3: which repository, branch and DAG folder should be used? |
 | `repository access` | If Git is selected, how should the repository be accessed? Provide the method and a non-secret reference such as an SSH key path, SSH alias or CLI profile. Do not send key contents or tokens. |
-
-When saving non-secret answers, use the agent's memory mechanism and existing
-project conventions. If an optional `memory.md` file is used, preserve existing
-confirmed values unless the user corrects them.
 
 For declined, omitted or unanswered fields, leave `UNKNOWN`; do not invent answers or
 fill them from defaults. Record an explicit skip separately from the field value so

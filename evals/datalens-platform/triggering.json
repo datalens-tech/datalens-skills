@@ -1,0 +1,209 @@
+[
+  {
+    "id": "catalog-create",
+    "scope": "catalog",
+    "query": "Create a staging namespace in the DataLens Platform REST Catalog and an orders table in it.",
+    "should_trigger": true
+  },
+  {
+    "id": "catalog-metadata",
+    "scope": "catalog",
+    "query": "Context: our lakehouse is in DLP, meaning DataLens Platform. Find the ID of the orders table, its field types, and its column descriptions.",
+    "should_trigger": true
+  },
+  {
+    "id": "transfer-incremental",
+    "scope": "transfers",
+    "query": "Configure a regular transfer of public.orders from PostgreSQL into DataLens Platform using updated_at as the cursor.",
+    "should_trigger": true
+  },
+  {
+    "id": "transfer-duplicates",
+    "scope": "transfers",
+    "query": "Our DataLens Platform transfer appends the whole source every hour. Diagnose its cursor settings and plan a historical reload.",
+    "should_trigger": true
+  },
+  {
+    "id": "trino-saved-query",
+    "scope": "trino",
+    "query": "Create and run a saved Trino query with a report_date parameter in a DataLens Platform workbook.",
+    "should_trigger": true
+  },
+  {
+    "id": "trino-cleanup",
+    "scope": "trino",
+    "query": "Context: this is a Trino table in DataLens Platform. Remove all its rows while preserving the table definition.",
+    "should_trigger": true
+  },
+  {
+    "id": "spark-ingestion",
+    "scope": "spark",
+    "query": "Write a PySpark ingestion job for DataLens Platform that calls a source API and validates the loaded rows.",
+    "should_trigger": true
+  },
+  {
+    "id": "spark-status",
+    "scope": "spark",
+    "query": "A Spark job in DataLens Platform is stuck. Inspect its application, session, and compute status.",
+    "should_trigger": true
+  },
+  {
+    "id": "airflow-dag",
+    "scope": "airflow",
+    "query": "Create an Airflow DAG in DataLens Platform: parallel Spark ingestion jobs, followed by a saved Trino query and a final check.",
+    "should_trigger": true
+  },
+  {
+    "id": "airflow-explain",
+    "scope": "airflow",
+    "query": "Explain how an Airflow task in DataLens Platform should obtain its service-account IAM token and track a Spark job.",
+    "should_trigger": true
+  },
+  {
+    "id": "cloudenv-storage",
+    "scope": "cloudenv-access",
+    "query": "Upload scripts/orders.py to DataLens Platform CloudEnv storage and prepare a URL for running it in Spark.",
+    "should_trigger": true
+  },
+  {
+    "id": "mixed-pipeline-dashboard",
+    "scope": "mixed",
+    "query": "Configure an incremental orders transfer in DataLens Platform, then build a DataLens dashboard from that data using the SDK.",
+    "should_trigger": true
+  },
+  {
+    "id": "bi-dashboard",
+    "scope": "bi",
+    "query": "Build a DataLens dashboard using the Python SDK and an existing dataset, without changing the source data processing.",
+    "should_trigger": false
+  },
+  {
+    "id": "bi-workbook",
+    "scope": "bi",
+    "query": "Move a DataLens workbook containing connections and dashboards to another collection.",
+    "should_trigger": false
+  },
+  {
+    "id": "rls",
+    "scope": "rls",
+    "query": "Resolve Yandex Cloud groups into DataLens RLSv2 subject IDs for an existing dashboard.",
+    "should_trigger": false
+  },
+  {
+    "id": "standalone-spark",
+    "scope": "standalone",
+    "query": "Why does PySpark in my local Jupyter notebook report a type error when joining two DataFrames?",
+    "should_trigger": false
+  },
+  {
+    "id": "ru-catalog-sdk",
+    "scope": "catalog",
+    "query": "Через Python SDK DataLens создай namespace staging в REST-каталоге DLP и таблицу заказов в нём.",
+    "should_trigger": true,
+    "should_load_sdk": true
+  },
+  {
+    "id": "ru-transfer-cursor",
+    "scope": "transfers",
+    "query": "Регулярный трансфер DataLens Platform каждый час дублирует строки PostgreSQL. Проверь инкрементальный курсор updated_at и настройку первой загрузки.",
+    "should_trigger": true
+  },
+  {
+    "id": "ru-trino-sdk",
+    "scope": "trino",
+    "query": "Через Python SDK выполни сохранённый Trino-запрос в DataLens Platform с параметром report_date и обработай ошибки выполнения.",
+    "should_trigger": true,
+    "should_load_sdk": true
+  },
+  {
+    "id": "ru-spark-sdk",
+    "scope": "spark",
+    "query": "Напиши на Python с DataLens SDK запуск PySpark Application в DLP из скрипта в CloudEnv S3 с проверкой завершения.",
+    "should_trigger": true,
+    "should_load_sdk": true
+  },
+  {
+    "id": "ru-airflow",
+    "scope": "airflow",
+    "query": "В DataLens Platform составь зависимости Airflow DAG: две независимые загрузки Spark, затем Trino и финальная проверка; объясни, что запускать параллельно.",
+    "should_trigger": true
+  },
+  {
+    "id": "ru-cloudenv-access",
+    "scope": "cloudenv-access",
+    "query": "Для DataLens Platform нужно выбрать организацию и профиль YC, затем разобраться с ошибкой createdBy при обращении к CloudEnv.",
+    "should_trigger": true
+  },
+  {
+    "id": "context-spark-status",
+    "scope": "spark",
+    "context": "Earlier we selected a managed Spark cluster in DataLens Platform and submitted the daily ingestion application. Continue using MCP for inspection.",
+    "query": "Check whether that application finished successfully before starting its dependent SQL task.",
+    "should_trigger": true
+  },
+  {
+    "id": "context-cloudenv-dag",
+    "scope": "airflow",
+    "context": "Для проекта уже выбрано облачное окружение CloudEnv. Скрипты заданий хранятся в его S3, а оркестрация работает в привязанном управляемом Airflow.",
+    "query": "Подготовь размещение нового DAG в папке dags/ того же хранилища и проверь зависимости его Spark-задач.",
+    "should_trigger": true
+  },
+  {
+    "id": "context-sql-sdk",
+    "scope": "trino",
+    "context": "Мы работаем в DataLens Platform. В предыдущем шаге нашли сохранённый SQL-запрос и его Trino-подключение; способ автоматизации — Python SDK.",
+    "query": "Теперь напиши код его выполнения с параметром даты и проверкой результата.",
+    "should_trigger": true,
+    "should_load_sdk": true
+  },
+  {
+    "id": "bi-trino-sdk",
+    "scope": "bi",
+    "query": "Using the DataLens Python SDK, create a dashboard from an existing dataset backed by Trino. Only manage the dashboard; the upstream processing is already configured.",
+    "should_trigger": false,
+    "should_load_sdk": true
+  },
+  {
+    "id": "bi-airflow-sdk",
+    "scope": "bi",
+    "context": "An Airflow pipeline in DataLens Platform already populates our reporting dataset. The pipeline is healthy and requires no changes.",
+    "query": "Using the DataLens Python SDK, update the chart title and dashboard filters for that dataset.",
+    "should_trigger": false,
+    "should_load_sdk": true
+  },
+  {
+    "id": "bi-trino-chart-ru",
+    "scope": "bi",
+    "query": "В интерфейсе DataLens поменяй цвета чарта на готовом датасете из Trino. Меняем только оформление графика.",
+    "should_trigger": false,
+    "should_load_sdk": false
+  },
+  {
+    "id": "bi-airflow-dashboard-ru",
+    "scope": "bi",
+    "query": "Объясни в интерфейсе DataLens, как добавить селектор даты на дашборд. Данные обновляет Airflow; сам DAG менять не требуется.",
+    "should_trigger": false,
+    "should_load_sdk": false
+  },
+  {
+    "id": "standalone-trino",
+    "scope": "standalone",
+    "query": "Optimize a SQL join in our standalone Trino cluster on Kubernetes. This system is unrelated to DataLens.",
+    "should_trigger": false,
+    "should_load_sdk": false
+  },
+  {
+    "id": "standalone-airflow",
+    "scope": "standalone",
+    "query": "Исправь расписание DAG в нашем обычном Apache Airflow на собственной инфраструктуре, без DataLens Platform и CloudEnv.",
+    "should_trigger": false,
+    "should_load_sdk": false
+  },
+  {
+    "id": "joint-sdk-cloudenv",
+    "scope": "cloudenv-access",
+    "query": "Write a Python script using the DataLens SDK to obtain a download URL for jobs/etl.py in the selected DataLens Platform CloudEnv.",
+    "should_trigger": true,
+    "should_load_sdk": true
+  }
+]

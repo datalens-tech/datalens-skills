@@ -1,7 +1,7 @@
 ---
 name: datalens
 description: >-
-  Start here for Yandex DataLens when the task has not yet settled on a tool, or when the question
+  Start here for Yandex DataLens and DataLens Platform (DLP) when the task has not yet settled on a tool, or when the question
   is about DataLens itself rather than about carrying something out in it: what DataLens is and
   what it can do; which installation is in play — Yandex Cloud, on-premise, or the internal Yandex
   Team one — and how they differ in hosts, auth, and capabilities; what a collection, workbook,
@@ -10,6 +10,7 @@ description: >-
   that does the work. NOT for doing the work once the approach is chosen — that is `datalens-sdk`
   for Python and `datalens-html-pages` for standalone HTML reports — and not for interpreting what
   business metric values mean.
+  For DLP storage and processing, load `datalens-platform`.
 license: Apache-2.0
 metadata:
   domain: datalens
@@ -100,6 +101,16 @@ specific to it.
 
 Tool-specific skills detect the installation for you — the SDK, for instance, ships a preflight
 that reports it. Do not hand-roll detection.
+
+## DataLens Platform
+
+For storage and data-processing work in DataLens Platform (DLP), identified by the
+request or established context, also load `datalens-platform`. This covers REST
+Catalog, data transfers, saved SQL queries, Spark, Airflow, and CloudEnv.
+
+Choose the execution interface below; for Python work, also load
+`datalens-sdk`. BI-only work with connections, datasets, charts, and dashboards,
+and standalone Trino/Spark/Airflow work outside DLP, do not require the platform skill.
 
 ## Choosing an interface
 

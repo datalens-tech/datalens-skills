@@ -13,6 +13,7 @@ HTTP API, or an MCP server.
 | Skill | What it does |
 |-------|--------------|
 | [`datalens`](skills/datalens/SKILL.md) | Start here. What DataLens is, how its installations differ, the entity model, and which interface — SDK, MCP, API, UI — fits the task. Routes to the rest. |
+| [`datalens-platform`](skills/datalens-platform/SKILL.md) | DLP storage and processing: REST Catalog, transfers, Trino, Spark, Airflow, CloudEnv storage, and platform access. |
 | [`datalens-html-pages`](skills/datalens-html-pages/SKILL.md) | Author, sanitize, validate, and publish standalone HTML pages (AI-generated reports) that render in a sandboxed iframe under an injected CSP. |
 | [`datalens-onprem-install`](skills/datalens-onprem-install/SKILL.md) | Install and manage the commercial DataLens On-premises distribution using current docs: K3s setup, feature changes, Public API/MCP, LDAP/OIDC, diagnostics, backup, update, and removal. |
 | [`datalens-sdk`](skills/datalens-sdk/SKILL.md) | Drive DataLens from Python — connections, datasets, charts, dashboards. Loads its instructions from the installed SDK package so they always match the installed version. |
@@ -26,6 +27,7 @@ detecting it automatically:
 
 ```bash
 npx skills add datalens-tech/datalens-skills --skill datalens
+npx skills add datalens-tech/datalens-skills --skill datalens-platform
 npx skills add datalens-tech/datalens-skills --skill datalens-html-pages
 npx skills add datalens-tech/datalens-skills --skill datalens-onprem-install
 npx skills add datalens-tech/datalens-skills --skill datalens-sdk

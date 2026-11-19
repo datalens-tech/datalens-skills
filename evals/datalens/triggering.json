@@ -78,5 +78,21 @@
   {
     "query": "подскажи, как в графане сделать дашборд с алертами по cpu",
     "should_trigger": false
+  },
+  {
+    "query": "What is DataLens Platform, and how does it differ from regular DataLens overall?",
+    "should_trigger": true
+  },
+  {
+    "query": "Should I choose the SDK or MCP to automate DataLens Platform? For now, I only need a comparison of the interfaces.",
+    "should_trigger": true
+  },
+  {
+    "query": "Configure a regular transfer of public.orders from PostgreSQL into DataLens Platform using updated_at as the cursor.",
+    "should_trigger": false
+  },
+  {
+    "query": "Create an Airflow DAG in DataLens Platform: parallel Spark ingestion jobs, followed by a saved Trino query.",
+    "should_trigger": false
   }
 ]

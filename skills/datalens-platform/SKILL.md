@@ -20,6 +20,52 @@ DataLens Platform (DLP) is an extension of DataLens for data storage and process
 - Integration methods: https://yandex.cloud/ru/docs/datalens/concepts/ai-agents
 - Documentation: https://yandex.cloud/ru/docs/datalens/datalens-platform/
 
+## SQL connections and execution
+
+Use an existing DLP connection to an external database to inspect its tables,
+columns, and data through SQL. This helps select the tables to load when configuring
+data transfers, especially Copy transfers that need incremental cursor columns
+and initial values. Prefer an update timestamp such as `update_dt` after verifying
+that it tracks relevant changes. If no update timestamp exists, consider a creation
+timestamp such as `create_dt` or a monotonically increasing `id` for append-only data.
+Inspect the source before choosing initial values so the first load includes the
+intended history.
+
+There are two SQL execution paths for DLP Trino:
+
+| Task | Execution path |
+| --- | --- |
+| Ad-hoc analytics with queries stored in DataLens | Save the SQL query and execute it through `/rpc/runSqlQuery` in the [DataLens API](https://api.datalens.tech/). |
+| Reliable ETL with SQL scripts versioned in Git | Get the cluster's `coordinatorUrl` through `/rpc/getTrinoCluster` and execute the SQL directly using the [Trino client REST API](https://trino.io/docs/current/develop/client-protocol.html). Authenticate with a Yandex Cloud IAM token in `Authorization: Bearer <IAM_TOKEN>`. |
+
+For example, send this request over HTTPS, replacing the example `Host` with the
+host from the selected cluster's `coordinatorUrl` and `<IAM_TOKEN>` with a valid
+IAM token at runtime:
+
+```http
+POST /v1/statement HTTP/1.1
+Host: trino-5k28nxzm6b54o.proxy.lakehouse.yandexcloud.net
+Authorization: Bearer <IAM_TOKEN>
+Content-Type: text/plain; charset=utf-8
+Accept: application/json
+
+SELECT 1 AS ok
+```
+
+For direct execution, follow the Trino protocol through completion: submit SQL to
+`/v1/statement`, follow `nextUri` until absent, and check for query errors before
+releasing dependent tasks. Prefer an existing Trino client that implements this
+protocol when suitable.
+
+### Current limitations
+
+- A saved SQL query and its connection must be available in the same workbook.
+  If the connection is elsewhere, create a copy in the query's workbook or add
+  a connection link to that workbook before binding the query.
+- The public DataLens SQL-query API currently runs saved queries by ID; it does
+  not expose execution of arbitrary unsaved SQL text. For a temporary Trino
+  script that must not be saved in DataLens, use the cluster endpoint directly.
+
 ## SQL Rule
 
 Avoid unintended Cartesian products. When using `CROSS JOIN`, confirm that the
@@ -139,7 +185,17 @@ the installed package: `references/setup.md`, `references/sql-queries.md`,
 `references/cloud-environment-storage.md`. Use those version-matched references
 for executable recipes; this skill defines the orchestration requirements.
 
+When setting up Airflow, a recommended deployment option is to bundle the DataLens
+SDK with the DAGs in the S3 location or Git repository that Airflow reads. Ensure
+the SDK and its dependencies are importable by the DAG parser and workers;
+uploading an uninstalled archive alone is insufficient. For managed dependency
+installation, use the cluster's
+[Pip packages setting](https://yandex.cloud/en/docs/datalens/datalens-platform/quickstart).
+
 ### Saved SQL queries (Trino)
+
+Use this path when the SQL is stored as a DataLens query. For SQL maintained in
+Git or executed without saving, follow **SQL connections and execution** above.
 
 Fetch the saved query with `client.get.sql_query(by_id=...)` and execute it with
 `query.run(params=...)`, using its declared parameter names and types.

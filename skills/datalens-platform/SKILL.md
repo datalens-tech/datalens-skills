@@ -22,14 +22,19 @@ DataLens Platform (DLP) is an extension of DataLens for data storage and process
 
 ## SQL connections and execution
 
+Before inspecting data or running a saved analysis, verify that
+[SQL read access](https://yandex.cloud/ru/docs/datalens/datalens-platform/operations/sql/connection-setting)
+is enabled in the connection settings.
+
 Use an existing DLP connection to an external database to inspect its tables,
 columns, and data through SQL. This helps select the tables to load when configuring
-data transfers, especially Copy transfers that need incremental cursor columns
-and initial values. Prefer an update timestamp such as `update_dt` after verifying
+data transfers, especially Copy transfers with incremental cursor columns
+and optional initial values. Prefer an update timestamp such as `update_dt` after verifying
 that it tracks relevant changes. If no update timestamp exists, consider a creation
 timestamp such as `create_dt` or a monotonically increasing `id` for append-only data.
-Inspect the source before choosing initial values so the first load includes the
-intended history.
+For a first load of the full history, leave `initialState` empty (unset).
+Inspect the source to choose an explicit initial value only when a bounded
+starting point is required.
 
 There are two SQL execution paths for DLP Trino:
 
@@ -52,16 +57,17 @@ Accept: application/json
 SELECT 1 AS ok
 ```
 
-For direct execution, follow the Trino protocol through completion: submit SQL to
-`/v1/statement`, follow `nextUri` until absent, and check for query errors before
-releasing dependent tasks. Prefer an existing Trino client that implements this
-protocol when suitable.
+For direct execution, submit one SQL statement at a time to `/v1/statement`,
+in script order. Follow `nextUri` until absent and check for errors before sending
+the next statement or releasing dependent tasks. Prefer an existing Trino client
+that implements this protocol when suitable.
 
 ### Current limitations
 
 - A saved SQL query and its connection must be available in the same workbook.
-  If the connection is elsewhere, create a copy in the query's workbook or add
-  a connection link to that workbook before binding the query.
+  Copy a connection owned by another workbook into the query's workbook.
+  A shared connection stored in a collection can instead be linked there with
+  the required linking permissions.
 - The public DataLens SQL-query API currently runs saved queries by ID; it does
   not expose execution of arbitrary unsaved SQL text. For a temporary Trino
   script that must not be saved in DataLens, use the cluster endpoint directly.
@@ -130,7 +136,9 @@ Do not use the top-level table list as a substitute for incremental settings. Wh
 editing an existing full-copy transfer, clear that list as required by the API and
 read the configuration back to confirm every cursor and the intended schedule.
 
-For PostgreSQL regular transfers, `initialState` is evaluated as a SQL expression.
+For a first load of the full history, leave `initialState` empty (unset), so copying
+starts at the earliest available value. If an explicit starting point is required,
+PostgreSQL regular transfers evaluate `initialState` as a SQL expression.
 JSON string quotes alone do not quote a timestamp in SQL: include the SQL single quotes
 inside the JSON string. For example, a table entry for a timestamp cursor is:
 
@@ -149,8 +157,7 @@ Use an expression compatible with the cursor column's source type; do not assume
 other source connectors use the same format. Read the saved value back and verify a
 successful run before considering a cursor-format correction complete.
 
-Choose the initial cursor to include the intended bootstrap history. Cleaning target
-tables does not prove that a transfer's stored cursor has reset: verify reset semantics,
+Cleaning target tables does not prove that a transfer's stored cursor has reset: verify reset semantics,
 or recreate the transfer when authorized. Historical backfills with timestamps older
 than the current cursor need an explicit reload plan.
 
@@ -211,12 +218,11 @@ before retrying a request whose outcome is unknown.
 ### Spark applications
 
 1. Use the cluster's DataLens entry ID (`SparkCluster.id`), not its managed cloud
-   ID (`SparkCluster.cluster_id`). For a Python file already in CloudEnv S3, obtain
-   a signed URL using `client.create.bucket_download_url` with the selected
-   `cloud_environment_id` and object key, such as `scripts/job.py`. Pass its `.url`
-   to the PySpark builder's `main_python_file_uri`. Generate it immediately before
-   submission and keep it out of logs and XCom; HTTPS is a supported
-   [PySpark main-file URI](https://yandex.cloud/en/docs/managed-spark/operations/jobs-pyspark).
+   ID (`SparkCluster.cluster_id`). For a Python file already in CloudEnv storage,
+   form `main_python_file_uri` as `dlp://<cloud_environment_id>/<object_key>`,
+   for example `dlp://<cloud_environment_id>/script.py`. Use the selected CloudEnv's
+   ID and the uploaded file's actual object key. Pass this URI directly to
+   `.pyspark(main_python_file_uri=...)`.
 2. Submit through `client.create.spark_application(...).pyspark(...).build()`.
    Save the operation ID for diagnosis. `operation.wait()` waits only for submission;
    check the returned snapshot's `.error` even when `.done` is true.
